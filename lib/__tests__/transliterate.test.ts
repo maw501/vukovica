@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { cyrToLat, latToCyr } from '../transliterate';
+import { cyrToLat, latToCyr } from '@/lib/transliterate';
 
 /**
  * The full Serbian alphabet, in Vuk's order, as (cyrillic, latin) pairs.
