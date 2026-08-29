@@ -17,5 +17,13 @@ export default defineConfig({
     include: ['**/__tests__/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
     environment: 'node',
+    env: {
+      // Pinned to a non-UTC zone on purpose. The streak is bucketed by LOCAL
+      // calendar day, and under TZ=UTC those tests would pass just as happily
+      // against a UTC-bucketing implementation -- the local-day guard would
+      // stop being load-bearing. Belgrade (UTC+1/+2) is also where the app's
+      // one user is learning Serbian to talk to people.
+      TZ: 'Europe/Belgrade',
+    },
   },
 });

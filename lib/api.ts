@@ -86,7 +86,7 @@ async function updateSettings(
 }
 
 export interface DashboardStats {
-  /** `user_cards` rows whose `due` has passed. */
+  /** Already-studied `user_cards` rows whose `due` has passed (excludes `new`). */
   dueCount: number;
   /** Cards the user has never studied -- no `user_cards` row yet. */
   newAvailable: number;
@@ -148,10 +148,15 @@ async function getDashboard(now: Date = new Date()): Promise<DashboardStats> {
   // after them. One `Promise.all` over both, so neither can reject unobserved.
   const [[due, totalCards, studiedCards, newToday], streakDays] = await Promise.all([
     Promise.all([
+      // `state = 'new'` is excluded deliberately: a freshly introduced card gets
+      // a `user_cards` row defaulting to due = now(), so counting it here would
+      // show it as Due *and* against the new allowance. New cards belong to the
+      // allowance only.
       supabase
         .from('user_cards')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
+        .neq('state', 'new')
         .lte('due', nowIso),
       supabase.from('cards').select('*', { count: 'exact', head: true }),
       // Every `user_cards` row references a card (FK), one row per card, so

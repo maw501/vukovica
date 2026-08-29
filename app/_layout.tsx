@@ -6,7 +6,7 @@
  * one; neither group is reachable by URL without a matching session.
  */
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -44,6 +44,14 @@ function AuthGate() {
   const initializing = useAuth((state) => state.initializing);
   const segments = useSegments();
   const router = useRouter();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    // Every cached query holds one user's rows. Dropping them the moment the
+    // session goes means a second account cannot briefly see the first one's
+    // settings and counts while its own queries are still in flight.
+    if (!session) queryClient.clear();
+  }, [session, queryClient]);
 
   useEffect(() => {
     // Wait for the persisted session to load, otherwise every cold start would

@@ -72,9 +72,17 @@ export function initAuth(): void {
   if (initialized) return;
   initialized = true;
 
-  supabase.auth.getSession().then(({ data }) => {
-    useAuth.setState({ session: data.session, initializing: false });
-  });
+  supabase.auth
+    .getSession()
+    .then(({ data }) => {
+      useAuth.setState({ session: data.session, initializing: false });
+    })
+    // Storage can throw outright (a locked keychain, a browser blocking site
+    // data). Treat that as "signed out" rather than leaving `initializing` true
+    // forever, which would strand the user on the splash spinner.
+    .catch(() => {
+      useAuth.setState({ session: null, initializing: false });
+    });
 
   supabase.auth.onAuthStateChange((_event, session) => {
     useAuth.setState({ session, initializing: false });
