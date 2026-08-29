@@ -57,8 +57,11 @@ describe('TUTOR_SYSTEM invariants', () => {
 
   it('bans boilerplate openers and emoji', () => {
     expect(TUTOR_SYSTEM).toContain('Great question');
-    expect(TUTOR_SYSTEM).toMatch(/emoji/i);
-    expect(TUTOR_SYSTEM).toMatch(/never/i);
+    // Assert the binding phrase, not merely that the words appear: a bare
+    // /never/i matched elsewhere in the prompt, so the ban could have been
+    // softened to "try to avoid emoji" with the test still green.
+    expect(TUTOR_SYSTEM).toMatch(/Never use emoji/);
+    expect(TUTOR_SYSTEM).toMatch(/Never open with filler/);
   });
 
   it('defines the DODAJ add-word convention with its exact line format', () => {

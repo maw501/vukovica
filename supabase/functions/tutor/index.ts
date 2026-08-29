@@ -32,6 +32,21 @@ serve(async (req: Request) => {
     return errorResponse(400, 'messages_required');
   }
 
+  // The TypeScript type on `role` constrains nothing at runtime. Without this
+  // check an authenticated caller could send role:'system' and append their own
+  // instructions after the persona, overriding it. Rejecting (rather than
+  // silently dropping) surfaces a malformed client instead of quietly changing
+  // the conversation the user thinks they sent.
+  const isValidTurn = (m: unknown): boolean => {
+    if (typeof m !== 'object' || m === null) return false;
+    const { role, content } = m as { role?: unknown; content?: unknown };
+    return (role === 'user' || role === 'assistant') && typeof content === 'string';
+  };
+
+  if (!messages.every(isValidTurn)) {
+    return errorResponse(400, 'invalid_message');
+  }
+
   const serviceClient = createServiceClient();
 
   try {

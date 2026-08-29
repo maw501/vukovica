@@ -5,6 +5,13 @@ import { corsHeaders, errorResponse, jsonHeaders } from '../_shared/cors.ts';
 
 const BUCKET = 'audio';
 
+/**
+ * Smallest response we will treat as real audio. Even a single short word at a
+ * low bitrate runs to a few KB, so anything under this is an empty or truncated
+ * body rather than speech.
+ */
+const MIN_AUDIO_BYTES = 1024;
+
 async function sha256Hex(text: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
   return Array.from(new Uint8Array(digest))
@@ -89,9 +96,24 @@ serve(async (req: Request) => {
       return errorResponse(502, 'tts_error');
     }
 
+    // A 200 carrying an empty or non-audio body would otherwise be uploaded and
+    // cached as a permanently broken clip: the cache check above short-circuits
+    // before the API call, so a zero-byte object is sticky for that text
+    // forever. Refuse to cache anything implausibly small, or anything that
+    // looks like a JSON/text error payload wearing a 200.
+    const audio = await speech.arrayBuffer();
+    const contentType = speech.headers.get('content-type') ?? '';
+    if (audio.byteLength < MIN_AUDIO_BYTES || /json|text\//i.test(contentType)) {
+      console.error('[tts] implausible audio response, not caching', {
+        bytes: audio.byteLength,
+        contentType,
+      });
+      return errorResponse(502, 'tts_error');
+    }
+
     const { error: uploadError } = await serviceClient.storage
       .from(BUCKET)
-      .upload(name, await speech.arrayBuffer(), { contentType: 'audio/mpeg', upsert: true });
+      .upload(name, audio, { contentType: 'audio/mpeg', upsert: true });
 
     if (uploadError) {
       console.error('[tts] upload failed', uploadError.message);
