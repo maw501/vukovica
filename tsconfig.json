@@ -13,5 +13,18 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "supabase/functions/**"
+  ],
+  // Edge Functions are Deno code and are excluded above, but these three are
+  // runtime-neutral and covered by vitest, so they stay under `tsc --noEmit`.
+  // (`files` entries survive `exclude`; `include` entries do not.)
+  "files": [
+    "supabase/functions/_shared/prompts.ts",
+    "supabase/functions/_shared/usage.ts",
+    "supabase/functions/_shared/__tests__/prompts.test.ts",
+    "supabase/functions/_shared/__tests__/usage.test.ts"
   ]
 }

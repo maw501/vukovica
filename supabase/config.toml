@@ -364,6 +364,26 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Edge Functions. Each declares the shared import map at
+# `supabase/functions/deno.json` — the CLI does NOT pick that up implicitly, and
+# without it the npm: specifiers fail to resolve at deploy time.
+#
+# `verify_jwt = false` turns off the *platform's* JWT gate, which would reject
+# the CORS preflight before our handler ever runs. Auth is enforced inside each
+# function by `_shared/auth.ts#getAuthenticatedUser`; deploy with
+# `--no-verify-jwt` to match.
+[functions.tutor]
+import_map = "./functions/deno.json"
+verify_jwt = false
+
+[functions.generate]
+import_map = "./functions/deno.json"
+verify_jwt = false
+
+[functions.tts]
+import_map = "./functions/deno.json"
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
