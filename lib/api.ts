@@ -9,6 +9,7 @@ import { parseGeneratedCard, trimCardInput, type CardInput } from '@/lib/cardInp
 import { callEdgeFunction } from '@/lib/edge';
 import { gradeCard, newUserCard, type ReviewGrade } from '@/lib/fsrs';
 import { buildQueue } from '@/lib/queue';
+import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
 import {
   collectLocalDays,
   computeStreak,
@@ -352,8 +353,15 @@ const VALID_GRADES: readonly number[] = [1, 2, 3, 4];
  * `user_cards` row, and append the `review_logs` entry that powers the streak
  * and the daily new-card count.
  *
- * The upsert is what "lazily insert on first grade" means — a new card gets its
- * row here and nowhere else, so it is never `state = 'new'` in the database.
+ * Both writes go through the `submit_review` Postgres function, in one
+ * transaction. Done as two PostgREST calls they could half-succeed, and the
+ * half that goes missing is load-bearing: `newDoneToday` counts logs with
+ * `state_before = 'new'`, so an advanced card with no log under-spends the daily
+ * allowance *and* stops being new, which nothing later can put right.
+ *
+ * The upsert inside that function is what "lazily insert on first grade" means —
+ * a new card gets its row there and nowhere else, so it is never `state = 'new'`
+ * in the database.
  */
 async function submitReview({
   cardId,
@@ -368,20 +376,21 @@ async function submitReview({
   const current = userCard ?? newUserCard(userId, cardId, now);
   const { next, log } = gradeCard(current, grade, now);
 
-  // Scheduling first, log second. If the log write fails the card is still
-  // scheduled correctly; the reverse would count a new card against the day's
-  // budget without actually scheduling it, and the card would come back as new.
-  const saved = await supabase
-    .from('user_cards')
-    .upsert(next, { onConflict: 'user_id,card_id' })
-    .select()
+  const { data, error } = await supabase
+    // The function returns `public.user_cards`, i.e. one row rather than a set,
+    // so PostgREST answers with a bare object -- `.single()` is what tells
+    // supabase-js to type it as one.
+    .rpc(SUBMIT_REVIEW_FN, submitReviewParams(next, log))
     .single<UserCardRow>();
-  if (saved.error) throw saved.error;
+  if (error) throw error;
 
-  const logged = await supabase.from('review_logs').insert(log);
-  if (logged.error) throw logged.error;
-
-  return saved.data;
+  // The caller feeds this straight back in as the starting row for the card's
+  // next grade, so a response that is not a row would corrupt the following
+  // answer rather than fail loudly. Check it once, here.
+  if (!data || typeof data.card_id !== 'string') {
+    throw new Error('The server did not return the saved card. The answer may not be recorded.');
+  }
+  return data;
 }
 
 // ---------------------------------------------------------------------------

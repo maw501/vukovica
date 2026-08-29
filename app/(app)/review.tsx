@@ -9,7 +9,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -22,6 +22,7 @@ import {
 
 import { api, type DashboardStats, type QueueEntry } from '@/lib/api';
 import { audioSupported, playText } from '@/lib/audio';
+import { confirmAction } from '@/lib/confirm';
 import { errorMessage } from '@/lib/errors';
 import { formatInterval } from '@/lib/format';
 import { gradeIntervals, newUserCard, type ReviewGrade } from '@/lib/fsrs';
@@ -45,6 +46,20 @@ const GRADES: { grade: ReviewGrade; label: string; colour: string }[] = [
   { grade: 4, label: 'Easy', colour: '#2F7A4D' },
 ];
 
+/** Asked before walking away from answers that never reached the database. */
+function confirmLeavingUnsaved(count: number): Promise<boolean> {
+  const answers = count === 1 ? '1 answer' : `${count} answers`;
+  return confirmAction({
+    title: 'Unsaved answers',
+    message:
+      `${answers} could not be saved. Leaving now discards ${count === 1 ? 'it' : 'them'} — ` +
+      `${count === 1 ? 'that card' : 'those cards'} will simply come round again in a later ` +
+      'session. Leave anyway?',
+    confirmLabel: 'Leave',
+    destructive: true,
+  });
+}
+
 /** What a single answer needs in order to be saved and counted. */
 interface GradeVars {
   cardId: string;
@@ -57,6 +72,7 @@ interface GradeVars {
 
 export default function ReviewScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
   const queryClient = useQueryClient();
 
   const queue = useQuery({
@@ -74,6 +90,8 @@ export default function ReviewScreen() {
   const [entries, setEntries] = useState<ReadonlyMap<string, QueueEntry>>(new Map());
   const [revealed, setRevealed] = useState(false);
   const [failures, setFailures] = useState<GradeVars[]>([]);
+  /** True between "check for more cards" and the rebuilt session appearing. */
+  const [restarting, setRestarting] = useState(false);
 
   /**
    * The latest saved row per card. A card answered Again comes round again in
@@ -87,20 +105,30 @@ export default function ReviewScreen() {
   const submitChain = useRef<Promise<unknown>>(Promise.resolve());
   /** Cards already answered this session, for the dashboard's optimistic maths. */
   const answered = useRef(new Set<string>());
+  /**
+   * Answers that did not save, as the *chain* knows them. `failures` mirrors
+   * this for rendering, but React state is not a truthful answer to "is anything
+   * lost?" the instant a save settles — a `setState` after the screen has gone is
+   * a silent no-op, and the leave guard has to be sure.
+   */
+  const failuresRef = useRef<GradeVars[]>([]);
 
-  // Build the session the first time the queue arrives, and never again while
-  // the screen is mounted. `entries` is snapshotted with it so a background
-  // refetch cannot make the card being looked at disappear.
+  // Build the session when the queue arrives, and not while a fetch is in
+  // flight: `restart` clears the session on purpose, and a build against the
+  // previous array would re-present cards that were just answered and re-seed
+  // `latestRows` with their pre-grade rows. `entries` is snapshotted with the
+  // session so a later refetch cannot make the card on screen disappear.
   useEffect(() => {
-    if (!queue.data || session !== null) return;
+    if (!queue.data || queue.isFetching || session !== null) return;
     setEntries(new Map(queue.data.map((entry) => [entry.cardId, entry])));
     latestRows.current = new Map(queue.data.map((entry) => [entry.cardId, entry.userCard]));
     answered.current = new Set();
     setSession(createSession(queue.data.map((entry) => entry.cardId)));
-  }, [queue.data, session]);
+  }, [queue.data, queue.isFetching, session]);
 
   const submit = useMutation({
-    mutationFn: ({ cardId, grade }: GradeVars) => {
+    mutationFn: (variables: GradeVars) => {
+      const { cardId, grade } = variables;
       const run = submitChain.current.then(async () => {
         const saved = await api.submitReview({
           cardId,
@@ -111,31 +139,40 @@ export default function ReviewScreen() {
         return saved;
       });
       // The chain must survive a failed link, or one network blip would stall
-      // every later save in the session.
+      // every later save in the session. Recording the failure here rather than
+      // in `onError` means it is on the books by the time the chain settles,
+      // which is what `goHome` waits for.
       submitChain.current = run.then(
         () => undefined,
-        () => undefined,
+        () => {
+          failuresRef.current = [...failuresRef.current, variables];
+          setFailures(failuresRef.current);
+        },
       );
       return run;
     },
     onMutate: async ({ countsAsNew, countsAsDue }: GradeVars) => {
       await queryClient.cancelQueries({ queryKey: ['dashboard'] });
-      queryClient.setQueryData<DashboardStats>(['dashboard'], (previous) =>
-        previous
+      const previous = queryClient.getQueryData<DashboardStats>(['dashboard']);
+      queryClient.setQueryData<DashboardStats>(['dashboard'], (current) =>
+        current
           ? {
-              dueCount: countsAsDue ? Math.max(0, previous.dueCount - 1) : previous.dueCount,
+              dueCount: countsAsDue ? Math.max(0, current.dueCount - 1) : current.dueCount,
               newAvailable: countsAsNew
-                ? Math.max(0, previous.newAvailable - 1)
-                : previous.newAvailable,
-              newDoneToday: countsAsNew ? previous.newDoneToday + 1 : previous.newDoneToday,
+                ? Math.max(0, current.newAvailable - 1)
+                : current.newAvailable,
+              newDoneToday: countsAsNew ? current.newDoneToday + 1 : current.newDoneToday,
               // Answering anything today makes the streak at least 1.
-              streakDays: Math.max(previous.streakDays, 1),
+              streakDays: Math.max(current.streakDays, 1),
             }
-          : previous,
+          : current,
       );
+      return { previous };
     },
-    onError: (_error, variables) => {
-      setFailures((current) => [...current, variables]);
+    onError: (_error, _variables, context) => {
+      // Undo the optimistic patch: a save that failed must not leave the
+      // dashboard claiming the card was answered, however briefly.
+      if (context?.previous) queryClient.setQueryData(['dashboard'], context.previous);
     },
     onSettled: () => {
       // Inactive while this screen is up, so this marks it stale rather than
@@ -143,6 +180,31 @@ export default function ReviewScreen() {
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
   });
+
+  /**
+   * Leaving with answers that never saved.
+   *
+   * The loss is bounded — `submit_review` is atomic, so a failed answer wrote
+   * nothing and the card simply comes round again — but it is the user's effort,
+   * and it should not disappear without a word. Covers the header back button
+   * and `goHome` alike, since both dispatch through the navigator.
+   */
+  const leaveConfirmed = useRef(false);
+  useEffect(() => {
+    if (failures.length === 0) return;
+    const unsubscribe = navigation.addListener('beforeRemove', (event) => {
+      // Second time round: the user has already said yes, let it through rather
+      // than asking again forever.
+      if (leaveConfirmed.current) return;
+      event.preventDefault();
+      void confirmLeavingUnsaved(failures.length).then((leave) => {
+        if (!leave) return;
+        leaveConfirmed.current = true;
+        navigation.dispatch(event.data.action);
+      });
+    });
+    return unsubscribe;
+  }, [navigation, failures.length]);
 
   const cardId = session ? currentCardId(session) : null;
   const entry = cardId ? entries.get(cardId) : undefined;
@@ -170,28 +232,54 @@ export default function ReviewScreen() {
   );
 
   const retryFailures = useCallback(() => {
-    const pending = failures;
+    const pending = failuresRef.current;
+    failuresRef.current = [];
     setFailures([]);
     for (const variables of pending) {
       // The optimistic dashboard patch already happened on the first attempt.
       submit.mutate({ ...variables, countsAsNew: false, countsAsDue: false });
     }
-  }, [failures, submit]);
+  }, [submit]);
 
   /**
    * Back to the dashboard. `router.back()` alone is not enough: opening
    * `/review` as a deep link (or a PWA reload on this route) leaves nothing on
    * the stack to go back to, and the button would silently do nothing.
+   *
+   * Waiting on the chain first is what makes the leave guard honest — a save
+   * still in flight has not failed *yet*, and its `setFailures` would land on a
+   * screen that is already gone.
    */
-  const goHome = useCallback(() => {
+  const goHome = useCallback(async () => {
+    await submitChain.current;
     if (router.canGoBack()) router.back();
     else router.replace('/');
   }, [router]);
 
+  /**
+   * Start a fresh session against the *current* database state.
+   *
+   * The order matters and is the whole point: let pending saves land, refetch
+   * the queue for real, and only then clear the session.
+   * `invalidateQueries` would leave the answered cards sitting in the cache, and
+   * clearing the session re-renders immediately — the build effect would run
+   * against that stale array, re-present cards just answered, and re-seed
+   * `latestRows` with `userCard: null` for the new ones. Re-grading from there
+   * writes a second `state_before = 'new'` log and rolls the FSRS row back.
+   */
   const restart = useCallback(() => {
-    void queryClient.invalidateQueries({ queryKey: ['queue'] });
-    setSession(null);
-    setRevealed(false);
+    setRestarting(true);
+    void submitChain.current
+      .then(() => queryClient.refetchQueries({ queryKey: ['queue'], exact: true }))
+      .then(() => {
+        // A refetch that failed leaves the old data in place; rebuilding from it
+        // is exactly what this function exists to avoid. The query's own error
+        // state renders instead.
+        if (queryClient.getQueryState(['queue'])?.status === 'error') return;
+        setSession(null);
+        setRevealed(false);
+      })
+      .finally(() => setRestarting(false));
   }, [queryClient]);
 
   if (queue.isPending || settings.isPending || session === null) {
@@ -222,8 +310,9 @@ export default function ReviewScreen() {
     return (
       <Summary
         session={session}
-        onDone={goHome}
+        onDone={() => void goHome()}
         onMore={restart}
+        restarting={restarting}
         failures={failures.length}
         onRetry={retryFailures}
       />
@@ -440,12 +529,15 @@ function Summary({
   session,
   onDone,
   onMore,
+  restarting,
   failures,
   onRetry,
 }: {
   session: SessionState;
   onDone: () => void;
   onMore: () => void;
+  /** The queue is being refetched; a new session appears when it lands. */
+  restarting: boolean;
   failures: number;
   onRetry: () => void;
 }) {
@@ -491,8 +583,16 @@ function Summary({
         >
           <Text style={styles.revealButtonText}>Back to the dashboard</Text>
         </Pressable>
-        <Pressable style={styles.textButton} onPress={onMore} accessibilityRole="button" testID="summary-more">
-          <Text style={styles.textButtonLabel}>Check for more cards</Text>
+        <Pressable
+          style={styles.textButton}
+          onPress={onMore}
+          disabled={restarting}
+          accessibilityRole="button"
+          testID="summary-more"
+        >
+          <Text style={styles.textButtonLabel}>
+            {restarting ? 'Checking…' : 'Check for more cards'}
+          </Text>
         </Pressable>
       </View>
     </ScrollView>
