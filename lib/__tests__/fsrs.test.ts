@@ -66,6 +66,58 @@ describe('gradeCard', () => {
     expect(next.difficulty).toBeGreaterThan(0);
   });
 
+  /**
+   * `user_cards` has no column for the FSRS (re)learning step index, so every
+   * row we load starts again at step 0. Scheduling must therefore graduate a
+   * card on a good answer without depending on that index — otherwise a card
+   * loops inside `learning` forever and its stability never grows.
+   */
+  it('graduates a learning card to `review` on Good', () => {
+    const learning = newCard({
+      state: 'learning',
+      stability: 2.31,
+      difficulty: 2.12,
+      reps: 1,
+      last_review: new Date('2026-08-29T11:50:00.000Z').toISOString(),
+    });
+
+    const { next } = gradeCard(learning, 3, NOW);
+
+    expect(next.state).toBe('review');
+  });
+
+  it('graduates a relearning card back to `review` on Good', () => {
+    const relearning = reviewCard({
+      state: 'relearning',
+      stability: 1.39,
+      lapses: 1,
+      last_review: new Date('2026-08-29T11:50:00.000Z').toISOString(),
+    });
+
+    const { next } = gradeCard(relearning, 3, NOW);
+
+    expect(next.state).toBe('review');
+  });
+
+  it('keeps growing stability across a persisted run of good answers', () => {
+    let row = newCard();
+    let now = NOW;
+    const stabilities: number[] = [];
+
+    // Study the card each time it falls due, persisting only the columns the
+    // database actually has (which is all `gradeCard` returns).
+    for (let i = 0; i < 4; i += 1) {
+      const { next } = gradeCard(row, 3, now);
+      stabilities.push(next.stability);
+      row = next;
+      now = new Date(next.due);
+    }
+
+    for (let i = 1; i < stabilities.length; i += 1) {
+      expect(stabilities[i]).toBeGreaterThan(stabilities[i - 1]);
+    }
+  });
+
   it('lapses a review card into `relearning` on Again', () => {
     const before = reviewCard();
     const { next } = gradeCard(before, 1, NOW);

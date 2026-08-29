@@ -25,10 +25,24 @@ export type ReviewGrade = 1 | 2 | 3 | 4;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
- * One scheduler instance with the library defaults (fuzz off, so scheduling is
- * deterministic and testable). Stateless — safe to share across reviews.
+ * One scheduler instance, stateless and safe to share across reviews. Fuzz is
+ * off by default in `ts-fsrs`, so scheduling is deterministic and testable.
+ *
+ * The one parameter we override is the (re)learning ladder. FSRS tracks how
+ * far a card has climbed its learning steps in `Card.learning_steps`, but
+ * `user_cards` has no column for that index, so every row we load from the
+ * database starts again at step 0. With the default two-step ladder
+ * (`['1m', '10m']`) that is a trap: a good answer moves the card from step 0
+ * to step 1 and back to step 0 on the next load, so the card loops inside
+ * `learning` forever and its stability never grows. A single step has no index
+ * to lose — a good answer always graduates — while still giving a lapsed or
+ * failed card one short-term retry a few minutes later. If `user_cards` ever
+ * gains a `learning_steps` column, this override can go.
  */
-const scheduler = fsrs();
+const scheduler = fsrs({
+  learning_steps: ['10m'],
+  relearning_steps: ['10m'],
+});
 
 const TO_FSRS_STATE: Record<CardState, State> = {
   new: State.New,
