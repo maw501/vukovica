@@ -7,7 +7,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -19,6 +18,7 @@ import {
 } from 'react-native';
 
 import { api, DEFAULT_NEW_PER_DAY } from '@/lib/api';
+import { confirmAction } from '@/lib/confirm';
 import { useAuth } from '@/lib/stores/auth';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import type { SettingsRow } from '@/lib/types';
@@ -158,20 +158,14 @@ export default function SettingsScreen() {
   );
 }
 
-/**
- * `Alert` is a no-op on react-native-web, so the PWA gets the browser's own
- * confirm dialog and native gets the action sheet.
- */
 async function confirmSignOut(signOut: () => Promise<void>) {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && !window.confirm('Sign out of Vukovica?')) return;
-    await signOut();
-    return;
-  }
-  Alert.alert('Sign out', 'Sign out of Vukovica?', [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
-  ]);
+  const confirmed = await confirmAction({
+    title: 'Sign out',
+    message: 'Sign out of Vukovica?',
+    confirmLabel: 'Sign out',
+    destructive: true,
+  });
+  if (confirmed) await signOut();
 }
 
 function ToggleRow({

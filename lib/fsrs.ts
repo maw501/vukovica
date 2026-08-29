@@ -99,6 +99,39 @@ function toFsrsCard(row: UserCardRow, now: Date): Card {
 }
 
 /**
+ * The starting row for a card the user has never studied.
+ *
+ * Matches the `user_cards` column defaults exactly, so grading a never-seen card
+ * gives the same answer whether the row was already in the database or is being
+ * created by that very grade. It is a value, not a write: nothing persists a row
+ * in `state = 'new'`.
+ */
+export function newUserCard(userId: string, cardId: string, now: Date = new Date()): UserCardRow {
+  return {
+    user_id: userId,
+    card_id: cardId,
+    due: now.toISOString(),
+    stability: 0,
+    difficulty: 0,
+    reps: 0,
+    lapses: 0,
+    state: 'new',
+    last_review: null,
+  };
+}
+
+/**
+ * How long each of the four answers would postpone `row`, in milliseconds from
+ * `now`. Purely informational — it is what the grade buttons print underneath
+ * themselves ("10m", "3d") so the user can see what an answer costs.
+ */
+export function gradeIntervals(row: UserCardRow, now: Date = new Date()): Record<ReviewGrade, number> {
+  const at = (grade: ReviewGrade) =>
+    new Date(gradeCard(row, grade, now).next.due).getTime() - now.getTime();
+  return { 1: at(1), 2: at(2), 3: at(3), 4: at(4) };
+}
+
+/**
  * Schedule `row` after the user answered it with `grade` at `now`.
  *
  * Returns the row to persist (same `user_id`/`card_id`, everything else

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { gradeCard } from '@/lib/fsrs';
+import { gradeCard, gradeIntervals, newUserCard } from '@/lib/fsrs';
 import type { UserCardRow } from '@/lib/types';
 
 const USER_ID = '11111111-1111-1111-1111-111111111111';
@@ -204,5 +204,55 @@ describe('gradeCard', () => {
     const reviewedAt = new Date(next.last_review as string).getTime();
     expect(reviewedAt).toBeGreaterThanOrEqual(start);
     expect(reviewedAt).toBeLessThanOrEqual(end);
+  });
+});
+
+describe('newUserCard', () => {
+  it('matches the row a never-studied card starts from', () => {
+    expect(newUserCard(USER_ID, CARD_ID, NOW)).toEqual(newCard());
+  });
+
+  it('grades identically whether the row was synthesised or loaded', () => {
+    const synthesised = gradeCard(newUserCard(USER_ID, CARD_ID, NOW), 3, NOW);
+    const loaded = gradeCard(newCard(), 3, NOW);
+    expect(synthesised).toEqual(loaded);
+  });
+
+  it('defaults `now` to the current time', () => {
+    const start = Date.now();
+    const row = newUserCard(USER_ID, CARD_ID);
+    expect(new Date(row.due).getTime()).toBeGreaterThanOrEqual(start);
+  });
+});
+
+describe('gradeIntervals', () => {
+  it('agrees with gradeCard for every grade', () => {
+    const row = reviewCard();
+    const intervals = gradeIntervals(row, NOW);
+    for (const grade of [1, 2, 3, 4] as const) {
+      const due = new Date(gradeCard(row, grade, NOW).next.due).getTime();
+      expect(intervals[grade]).toBe(due - NOW.getTime());
+    }
+  });
+
+  it('never suggests a shorter wait for a better answer', () => {
+    const intervals = gradeIntervals(reviewCard(), NOW);
+    expect(intervals[1]).toBeLessThanOrEqual(intervals[2]);
+    expect(intervals[2]).toBeLessThanOrEqual(intervals[3]);
+    expect(intervals[3]).toBeLessThanOrEqual(intervals[4]);
+  });
+
+  it('works for a card that has never been studied', () => {
+    const intervals = gradeIntervals(newUserCard(USER_ID, CARD_ID, NOW), NOW);
+    // Again puts a new card on the 10-minute learning step.
+    expect(intervals[1]).toBe(10 * 60 * 1000);
+    expect(intervals[4]).toBeGreaterThan(intervals[1]);
+  });
+
+  it('does not mutate the row it previews', () => {
+    const row = reviewCard();
+    const snapshot = { ...row };
+    gradeIntervals(row, NOW);
+    expect(row).toEqual(snapshot);
   });
 });
