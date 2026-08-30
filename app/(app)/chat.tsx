@@ -77,6 +77,14 @@ export default function ChatScreen() {
   const [draft, setDraft] = useState('');
   /** The assistant's reply as it arrives; null when nothing is streaming. */
   const [streamed, setStreamed] = useState<string | null>(null);
+  /**
+   * A reply that arrived in full but could not be written to `chat_messages`.
+   *
+   * Held because it has already been paid for: re-running the whole turn would
+   * bill a second model call and come back with different words. While this is
+   * set, "Try again" only retries the insert.
+   */
+  const [unsaved, setUnsaved] = useState<string | null>(null);
   /** The word whose "＋ у шпил" chip was tapped, if the add sheet is open. */
   const [adding, setAdding] = useState<DodajSuggestion | null>(null);
 
@@ -94,46 +102,70 @@ export default function ChatScreen() {
   );
 
   /**
-   * One turn: send `context` and, if the stream produces anything, persist the
-   * reply. `context` is passed in rather than read from the cache so that a
-   * retry sends exactly what the failed attempt sent.
+   * One turn: send `context`, then persist the reply. `context` is passed in
+   * rather than read from the cache so that a retry sends exactly what the
+   * failed attempt sent.
+   *
+   * `reply` short-circuits the model call. It is set only by a retry after the
+   * stream succeeded and the *insert* failed — the words are already in hand and
+   * already paid for, so asking again would bill twice and answer differently.
    */
   const turn = useMutation({
-    mutationFn: async (context: TutorTurn[]) => {
+    mutationFn: async ({ context, reply }: { context: TutorTurn[]; reply: string | null }) => {
+      if (reply !== null) return api.appendChatMessage('assistant', reply);
+
       const [token, learnerState] = await Promise.all([
         api.getAccessToken(),
         api.getLearnerState(),
       ]);
+
       setStreamed('');
-      const reply = await streamTutor({
-        messages: context,
-        learnerState,
-        token,
-        onChunk: (chunk) => setStreamed((current) => (current ?? '') + chunk),
-      });
-      return api.appendChatMessage('assistant', reply);
+      let text: string;
+      try {
+        text = await streamTutor({
+          messages: context,
+          learnerState,
+          token,
+          onChunk: (chunk) => setStreamed((current) => (current ?? '') + chunk),
+        });
+      } catch (error) {
+        // Nothing usable arrived. The partial text goes: it was never saved, and
+        // leaving half a sentence above an error reads as though it were the
+        // answer. (Cleared here rather than in `onError`, which cannot tell this
+        // case from a failed insert without a stale closure.)
+        setStreamed(null);
+        throw error;
+      }
+
+      // Held *before* the insert is attempted, so a failed insert cannot lose
+      // the reply. The bubble keeps showing it, unsaved, with a retry under it.
+      setUnsaved(text);
+      setStreamed(text);
+      return api.appendChatMessage('assistant', text);
     },
     onSuccess: (row) => {
       setStreamed(null);
+      setUnsaved(null);
       append(row);
-    },
-    onError: () => {
-      // The partial text goes: it was never saved, and leaving half a sentence
-      // above an error message reads as though it were the answer.
-      setStreamed(null);
     },
   });
 
   /** Persist what he typed, then take the turn. */
   const send = useMutation({
     mutationFn: async (text: string) => api.appendChatMessage('user', text),
-    // Clears a previous turn's error, so the failure on screen is always the
-    // one belonging to what is happening now.
-    onMutate: () => turn.reset(),
+    // Clears a previous turn's error, so the failure on screen is always the one
+    // belonging to what is happening now. An unsaved reply he chose to type past
+    // rather than retry goes with it — keeping it would put a bubble above the
+    // new question that is on screen but not in the history.
+    onMutate: () => {
+      turn.reset();
+      setStreamed(null);
+      setUnsaved(null);
+    },
     onSuccess: (row) => {
       setDraft('');
       append(row);
-      turn.mutate(toContext([...messages, row]));
+      turn.mutate({ context: toContext([...messages, row]), reply: null });
     },
   });
 
@@ -149,9 +181,13 @@ export default function ChatScreen() {
    */
   const failed = turn.isError
     ? {
-        message: describeTutorError(turn.error),
+        // A held reply means the tutor answered and only the write failed —
+        // worth saying, because it explains why retrying is free.
+        message: unsaved
+          ? `${errorMessage(turn.error, 'The reply could not be saved.')} The tutor’s answer is above; trying again saves it without asking twice.`
+          : describeTutorError(turn.error),
         ready: messages.length > 0,
-        retry: () => turn.mutate(toContext(messages)),
+        retry: () => turn.mutate({ context: toContext(messages), reply: unsaved }),
       }
     : send.isError
       ? {

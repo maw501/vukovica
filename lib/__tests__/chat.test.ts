@@ -367,6 +367,41 @@ describe('streamTutor', () => {
     expect(onChunk).not.toHaveBeenCalled();
   });
 
+  it('rejects when the stream errors part-way through, rather than resolving with the fragment', async () => {
+    // The other half of Task 6's limitation: the connection can also break
+    // *after* some text has arrived. A partial answer must not be resolved (the
+    // caller would persist half a sentence as the tutor's reply) — it has to
+    // reject so the caller offers a retry.
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('Добро ју'));
+        // Erroring on a later tick, so the enqueued chunk is genuinely delivered
+        // first. Erroring synchronously would discard it and only test the
+        // never-produced-anything case, which the empty-stream tests cover.
+        setTimeout(() => controller.error(new Error('network disconnected')), 0);
+      },
+    });
+
+    const onChunk = vi.fn();
+    const outcome = await streamTutor({
+      messages: turns,
+      token: 'tok',
+      onChunk,
+      baseUrl: BASE,
+      fetchImpl: fetchStub({ ok: true, status: 200, body } as unknown as Response),
+    }).then(
+      (text) => ({ resolved: text }),
+      (error: unknown) => ({ rejected: error }),
+    );
+
+    expect(outcome).not.toHaveProperty('resolved');
+    expect((outcome as { rejected: Error }).rejected.message).toMatch(/network disconnected/);
+    // The chunk that did arrive was still handed to the live bubble; it is the
+    // caller's job to drop it, which `chat.tsx` does on error.
+    expect(onChunk).toHaveBeenCalledWith('Добро ју');
+  });
+
   it('treats a whitespace-only stream as a failure too', async () => {
     await expect(
       streamTutor({
