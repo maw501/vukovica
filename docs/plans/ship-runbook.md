@@ -463,7 +463,7 @@ Against the production domain, in a browser:
 | `/review?deck=letters` | a letter pair («А а»), with a speaker button |
 | `/trainer` | a drill |
 | `/grammar` | twelve topics |
-| `/grammar/to-be` | the explanation, and a drill that starts |
+| `/grammar/to-be` | the explanation, and a drill that starts — and **reload it**, for the rewrite (the least-proven of the three) |
 | `/reader` | four stories |
 | `/story/<id>` | the story — and **reload it**, for the rewrite |
 | `/books` | *Погоди колико те волим* |
