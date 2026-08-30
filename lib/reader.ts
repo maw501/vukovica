@@ -1,14 +1,14 @@
 /**
  * The graded reader's pure logic: turning a story body into tappable words,
- * finding the sentence around a tap, choosing a difficulty level, and saying
- * what went wrong in words a person can act on.
+ * finding the sentence around a tap, and saying what went wrong in words a
+ * person can act on.
  *
  * Free of Supabase and React Native imports on purpose — this is the part of
  * the reader that can be unit-tested, and `lib/errors.ts` (its only import)
  * imports nothing itself.
  */
 
-import { describeEdgeError, EdgeFunctionError, errorMessage } from '@/lib/errors';
+import { errorMessage } from '@/lib/errors';
 
 /**
  * One piece of a story body.
@@ -40,8 +40,8 @@ const OTHER = /[^\s\p{L}]+/uy;
  * body inserted by hand, restored from a backup, or written by some future
  * loosening of that check must not produce a tappable Latin word in a view
  * whose whole premise is that there is no Latin in it. A mixed-script word
- * (`бebа`) is untappable too: it is a corruption, and glossing it would send
- * the model a word that does not exist.
+ * (`бebа`) is untappable too: it is a corruption, and looking it up would send
+ * the deck a word that does not exist.
  */
 const CYRILLIC_WORD = /^[\p{Script=Cyrillic}-]+$/u;
 
@@ -57,9 +57,8 @@ const SENTENCE_END = /[.!?…]/u;
  * token — paragraph breaks are simply the tokens that contain a newline, so
  * nothing has to be reassembled, and nothing can silently go missing.
  *
- * Digits are deliberately *not* tappable: the story prompt spells numbers out,
- * and sending "1996" to the gloss endpoint would spend a model call on nothing.
- * Neither is a word carrying a Latin letter — see `CYRILLIC_WORD`.
+ * Digits are deliberately *not* tappable: "1996" is not a word anyone needs
+ * translating. Neither is a word carrying a Latin letter — see `CYRILLIC_WORD`.
  */
 export function tokenize(body: string): Token[] {
   const tokens: Token[] = [];
@@ -95,16 +94,16 @@ function match(pattern: RegExp, source: string, at: number): string | null {
 }
 
 /**
- * The sentence containing `tokens[index]`, as the gloss endpoint wants it: the
- * word in the context that decides what it means.
+ * The sentence containing `tokens[index]`: the word in the context that decides
+ * what it means, and the context a translation request is filed with.
  *
  * Bounded by sentence-ending punctuation (`. ! ? …`) and by paragraph breaks,
  * so a tap in one paragraph never quotes the one before it. Quotation marks are
  * not boundaries — „Дођи, мацо”, каже беба. is one sentence, which is exactly
  * the kind of line whose grammar needs explaining.
  *
- * Known limit: a Serbian ordinal ("1. мај") would end a sentence early. The
- * generator spells numbers out, so this costs nothing today.
+ * Known limit: a Serbian ordinal ("1. мај") would end a sentence early. Seeded
+ * texts spell numbers out, so this costs nothing today.
  */
 export function sentenceAt(tokens: readonly Token[], index: number): string {
   if (index < 0 || index >= tokens.length) return '';
@@ -142,92 +141,6 @@ function isBoundary(token: Token): boolean {
   return !token.tappable && (isParagraphBreak(token) || SENTENCE_END.test(token.text));
 }
 
-/** The three difficulty bands a story can be generated at (`stories.level`). */
-export type StoryLevel = 1 | 2 | 3;
-
-/** The levels a picker offers, in order. */
-export const STORY_LEVELS: readonly StoryLevel[] = [1, 2, 3];
-
-/** What each band means to someone choosing one, in a handful of words. */
-export const STORY_LEVEL_BLURB: Record<StoryLevel, string> = {
-  1: 'Very short, present tense',
-  2: 'Longer, short sentences',
-  3: 'A full little story',
-};
-
-/**
- * One tapped word explained, as the `gloss` mode of the `generate` function
- * returns it.
- */
-export interface Gloss {
-  /** The dictionary form — what the "у шпил" button seeds a card with. */
-  base_form_cyr: string;
-  en: string;
-  /** Why the word looks the way it does here. May be empty. */
-  note: string;
-}
-
-/**
- * Validate a gloss payload before it reaches the screen.
- *
- * The Edge Function validates its own output, but `callEdgeFunction` returns an
- * unchecked cast, and a missing field would render as the word "undefined" in
- * the sheet rather than as an error anyone could act on.
- */
-export function parseGloss(value: unknown): Gloss {
-  const source = (value ?? {}) as Record<string, unknown>;
-  const base_form_cyr = typeof source.base_form_cyr === 'string' ? source.base_form_cyr.trim() : '';
-  const en = typeof source.en === 'string' ? source.en.trim() : '';
-  if (!base_form_cyr || !en) {
-    throw new Error('The gloss came back incomplete. Try that word again.');
-  }
-  return {
-    base_form_cyr,
-    en,
-    // The note is genuinely optional — plenty of words need no explaining.
-    note: typeof source.note === 'string' ? source.note.trim() : '',
-  };
-}
-
-/**
- * The level to offer for the next story, from how many words the learner knows
- * (spec §3.3: level 1 until 300 known, then 2, then 3).
- *
- * A suggestion, never a rule — the picker lets him choose anything.
- */
-export function suggestedLevel(knownWords: number): StoryLevel {
-  if (!Number.isFinite(knownWords) || knownWords < 300) return 1;
-  if (knownWords < 600) return 2;
-  return 3;
-}
-
-/**
- * The one 502 that really is "somebody has to go and fix something". Shared by
- * both describers so the two can never drift into saying it differently.
- */
-const AI_UNREACHABLE = 'The AI could not be reached. Check the server’s API key, then try again.';
-
-/**
- * What to tell the reader when a tap-to-gloss call fails.
- *
- * The two 502s mean opposite things and must never be collapsed:
- *   - `provider_error` — the AI was not reachable (a stale key, an outage).
- *     Something has to be fixed before *any* gloss will work.
- *   - `invalid_gloss` — the AI answered, but with a base form that was not
- *     Cyrillic. The key is FINE; the same word may well work on a retry, and
- *     sending the user off to check a key that is not broken is worse than
- *     saying nothing.
- */
-export function describeGlossError(error: unknown): string {
-  if (error instanceof EdgeFunctionError && error.status === 502) {
-    if (error.code === 'invalid_gloss') {
-      return 'The AI could not gloss that word. Try again, or tap another word.';
-    }
-    return AI_UNREACHABLE;
-  }
-  return describeEdgeError(error);
-}
-
 /**
  * PostgREST's code for "`.single()` asked for one row and got none". On an
  * update under RLS it means the row is not there — or not his.
@@ -235,7 +148,7 @@ export function describeGlossError(error: unknown): string {
 const NO_ROWS_RETURNED = 'PGRST116';
 
 /**
- * What to tell the reader when "Завршио сам" fails.
+ * What to tell the reader when "I have finished this" fails.
  *
  * Without this the screen would show PostgREST's own sentence — "JSON object
  * requested, multiple (or no) rows returned" — which describes a serialisation
@@ -247,20 +160,4 @@ export function describeFinishError(error: unknown): string {
     return 'That story is no longer in your library, so it could not be marked read.';
   }
   return errorMessage(error, 'That could not be saved. Try again.');
-}
-
-/**
- * What to tell the reader when generating a story fails. Same split as the
- * gloss: `invalid_story` means the model wrote Latin script and the story was
- * thrown away before it was ever saved — a retry is the right move, and the key
- * is not the problem.
- */
-export function describeStoryError(error: unknown): string {
-  if (error instanceof EdgeFunctionError && error.status === 502) {
-    if (error.code === 'invalid_story') {
-      return 'The AI wrote that story in the wrong script, so it was thrown away. Try again.';
-    }
-    return AI_UNREACHABLE;
-  }
-  return describeEdgeError(error);
 }

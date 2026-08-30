@@ -1,12 +1,9 @@
 /**
  * The editable card preview, shared by every route that can put a word in the
- * deck: the deck's own add-a-word flow, editing an existing card, and the
- * tutor's "＋ у шпил" chips.
+ * deck: the deck's own add-a-word flow and editing an existing card.
  *
- * Nothing is ever saved straight through from the model — a drafted card lands
- * in this form first, and `cardInputErrors` decides whether the save button does
- * anything. Extracted from `app/(app)/deck.tsx` in Task 10 so that the chat
- * screen shows the identical preview rather than a second, drifting copy.
+ * `cardInputErrors` decides whether the save button does anything, so a card
+ * cannot reach `public.cards` half-filled whichever route it came in by.
  */
 
 import { useState } from 'react';

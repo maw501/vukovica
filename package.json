@@ -14,7 +14,6 @@
     "db:start": "npx supabase start",
     "db:migrate": "npx supabase db push --local",
     "db:seed": "node --env-file=.env.local scripts/seed.mjs",
-    "functions": "npx supabase functions serve --no-verify-jwt --env-file supabase/.env.local",
     "build:web": "expo export --platform web --output-dir dist --clear"
   },
   "dependencies": {

@@ -40,6 +40,7 @@ function progress(over: Partial<ProgressInputs> = {}): Progress {
     drillStats: allMastered(),
     knownWords: 0,
     storiesRead: 0,
+    booksFinished: 0,
     ...over,
   });
 }
@@ -125,7 +126,7 @@ describe('letter mastery', () => {
   it('does not mutate its input', () => {
     const stats = [stat('а', 8, 8)];
     const before = JSON.stringify(stats);
-    computeProgress({ drillStats: stats, knownWords: 5, storiesRead: 2 });
+    computeProgress({ drillStats: stats, knownWords: 5, storiesRead: 2, booksFinished: 0 });
     expect(JSON.stringify(stats)).toBe(before);
   });
 });
@@ -191,34 +192,49 @@ describe('weakest letters', () => {
 // ---------------------------------------------------------------------------
 
 describe('stage', () => {
-  it('is azbuka while a single letter is unmastered, whatever else is done', () => {
+  it('is alphabet while a single letter is unmastered, whatever else is done', () => {
     const stats = masteredExcept('ш');
-    expect(progress({ drillStats: stats }).stage).toBe('azbuka');
-    expect(progress({ drillStats: stats, knownWords: 900, storiesRead: 40 }).stage).toBe('azbuka');
+    expect(progress({ drillStats: stats }).stage).toBe('alphabet');
+    expect(progress({ drillStats: stats, knownWords: 900, storiesRead: 40 }).stage).toBe(
+      'alphabet',
+    );
     expect(progress({ drillStats: stats }).letterMastery.mastered).toBe(29);
   });
 
-  it('leaves azbuka the moment the thirtieth letter is mastered', () => {
+  it('leaves alphabet the moment the thirtieth letter is mastered', () => {
     expect(progress().letterMastery.mastered).toBe(30);
-    expect(progress().stage).toBe('reci');
+    expect(progress().stage).toBe('words');
   });
 
-  it('is reci at 99 known words and citanje at exactly 100', () => {
-    expect(progress({ knownWords: 99 }).stage).toBe('reci');
-    expect(progress({ knownWords: 100 }).stage).toBe('citanje');
+  it('is words at 99 known words and reading at exactly 100', () => {
+    expect(progress({ knownWords: 99 }).stage).toBe('words');
+    expect(progress({ knownWords: 100 }).stage).toBe('reading');
   });
 
-  it('needs both 300 words and 5 stories for razgovor', () => {
-    expect(progress({ knownWords: 299, storiesRead: 5 }).stage).toBe('citanje');
-    expect(progress({ knownWords: 300, storiesRead: 4 }).stage).toBe('citanje');
-    expect(progress({ knownWords: 300, storiesRead: 5 }).stage).toBe('razgovor');
-    expect(progress({ knownWords: 800, storiesRead: 30 }).stage).toBe('razgovor');
+  it('needs both 300 words and 5 stories for books', () => {
+    expect(progress({ knownWords: 299, storiesRead: 5 }).stage).toBe('reading');
+    expect(progress({ knownWords: 300, storiesRead: 4 }).stage).toBe('reading');
+    expect(progress({ knownWords: 300, storiesRead: 5 }).stage).toBe('books');
+    expect(progress({ knownWords: 800, storiesRead: 30 }).stage).toBe('books');
   });
 
-  it('sends a razgovor-ready learner back to azbuka if letters lapse out of view', () => {
+  it('stays on books once it is reached, however many books are finished', () => {
+    // The stage is where he reads real books; finishing one must not end it.
+    const inputs = { knownWords: 300, storiesRead: 5 };
+    expect(progress({ ...inputs, booksFinished: 0 }).stage).toBe('books');
+    expect(progress({ ...inputs, booksFinished: 1 }).stage).toBe('books');
+    expect(progress({ ...inputs, booksFinished: 50 }).stage).toBe('books');
+  });
+
+  it('does not let a finished book pull any earlier stage forward', () => {
+    expect(progress({ knownWords: 0, storiesRead: 0, booksFinished: 9 }).stage).toBe('words');
+    expect(progress({ knownWords: 150, storiesRead: 1, booksFinished: 9 }).stage).toBe('reading');
+  });
+
+  it('sends a books-ready learner back to alphabet if letters lapse out of view', () => {
     // The alphabet gates everything: it is the first stage and it is "until".
     const stats = masteredExcept('њ', 'џ');
-    expect(progress({ drillStats: stats, knownWords: 400, storiesRead: 9 }).stage).toBe('azbuka');
+    expect(progress({ drillStats: stats, knownWords: 400, storiesRead: 9 }).stage).toBe('alphabet');
   });
 });
 
@@ -260,10 +276,11 @@ describe('storyMilestone', () => {
 });
 
 describe('the counts it passes through', () => {
-  it('reports the words and stories it was given', () => {
-    const result = progress({ knownWords: 137, storiesRead: 3 });
+  it('reports the words, stories and books it was given', () => {
+    const result = progress({ knownWords: 137, storiesRead: 3, booksFinished: 2 });
     expect(result.knownWords).toBe(137);
     expect(result.storiesRead).toBe(3);
+    expect(result.booksFinished).toBe(2);
   });
 });
 
@@ -274,7 +291,7 @@ describe('the counts it passes through', () => {
 describe('nextGoal', () => {
   it('names the alphabet and how many letters are left', () => {
     const goal = progress({ drillStats: masteredExcept('п', 'р', 'с', 'т') }).nextGoal;
-    expect(goal).toContain('Азбука');
+    expect(goal).toContain('Alphabet');
     expect(goal).toContain('4');
     expect(goal).toContain('26/30');
   });
@@ -287,14 +304,14 @@ describe('nextGoal', () => {
 
   it('names the words stage and the 100-word rung', () => {
     const goal = progress({ knownWords: 88 }).nextGoal;
-    expect(goal).toContain('Речи');
+    expect(goal).toContain('Words');
     expect(goal).toContain('12');
     expect(goal).toContain('88/100');
   });
 
   it('names the reading stage and the next story rung', () => {
     const goal = progress({ knownWords: 150, storiesRead: 2 }).nextGoal;
-    expect(goal).toContain('Читање');
+    expect(goal).toContain('Reading');
     expect(goal).toContain('3');
     expect(goal).toContain('2/5');
   });
@@ -305,26 +322,46 @@ describe('nextGoal', () => {
     expect(goal).not.toContain('stories');
   });
 
-  it('points at the words when the story ladder tops out inside Читање', () => {
+  it('points at the words when the story ladder tops out inside Reading', () => {
     // Twenty stories read on a vocabulary still short of 300: the ladder is
     // finished but the stage is not, and "read 0 more stories (25/20)" would be
     // no goal at all.
     const result = progress({ knownWords: 255, storiesRead: 25 });
-    expect(result.stage).toBe('citanje');
-    expect(result.nextGoal).toContain('Читање');
+    expect(result.stage).toBe('reading');
+    expect(result.nextGoal).toContain('Reading');
     expect(result.nextGoal).not.toContain('0 more');
     expect(result.nextGoal).toContain('45');
     expect(result.nextGoal).toContain('255/300');
   });
 
-  it('says "word", not "words", for the last one to Разговор', () => {
+  it('says "word", not "words", for the last one to Books', () => {
     const goal = progress({ knownWords: 299, storiesRead: 20 }).nextGoal;
     expect(goal).toContain('1 word');
     expect(goal).not.toContain('1 words');
   });
 
-  it('names the conversation stage once it is reached', () => {
-    expect(progress({ knownWords: 300, storiesRead: 5 }).nextGoal).toContain('Разговор');
+  it('is the book itself, word for word, once the books stage is reached', () => {
+    // The capstone. Spelled out here rather than imported, so a typo in the
+    // title fails the test rather than travelling with it.
+    expect(progress({ knownWords: 300, storiesRead: 5 }).nextGoal).toBe(
+      'Read Погоди колико те волим to your son',
+    );
+    // ...and it does not drift once books start being finished.
+    expect(progress({ knownWords: 900, storiesRead: 40, booksFinished: 3 }).nextGoal).toBe(
+      'Read Погоди колико те волим to your son',
+    );
+  });
+
+  it('is English chrome everywhere except that one book title', () => {
+    const cases: Partial<ProgressInputs>[] = [
+      { drillStats: [] },
+      { knownWords: 88 },
+      { knownWords: 150, storiesRead: 2 },
+      { knownWords: 255, storiesRead: 25 },
+    ];
+    for (const input of cases) {
+      expect(progress(input).nextGoal).not.toMatch(/\p{Script=Cyrillic}/u);
+    }
   });
 
   it('is always a single non-empty line', () => {

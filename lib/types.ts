@@ -139,7 +139,7 @@ export interface StoryRow {
   level: number;
   word_count: number;
   created_at: string | null;
-  /** null = unread. Set when the reader taps "Завршио сам". */
+  /** null = unread. Set when the reader taps "I have finished this". */
   finished_at: string | null;
 }
 

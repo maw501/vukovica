@@ -69,7 +69,7 @@ export default function SignInScreen() {
       </Head>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
-          <Text style={styles.wordmark}>Вуковица</Text>
+          <Text style={styles.wordmark}>Vukovica</Text>
           <Text style={styles.tagline}>Serbian, one card at a time</Text>
 
           <TextInput

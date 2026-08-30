@@ -1,23 +1,24 @@
 /**
  * The reading view: one story, big Cyrillic, every word tappable.
  *
- * **No Latin anywhere on this screen** (spec §3.3). Decoding Cyrillic is the
- * whole exercise, so `settings.show_latin` deliberately does not reach here —
- * the transliteration a learner can lean on everywhere else is exactly what
- * would stop him reading.
+ * **No Latin in the story itself** (spec §3.3). Decoding Cyrillic is the whole
+ * exercise, so `settings.show_latin` deliberately does not reach the body — the
+ * transliteration a learner can lean on everywhere else is exactly what would
+ * stop him reading. The sheet a tap opens is a different matter: it is the
+ * answer, not the exercise.
  *
  * The body is rendered as a single `<Text>` whose children are the tokens from
  * `tokenize`, which tile the source exactly: paragraph breaks are simply the
  * tokens that contain a newline, so nothing is reassembled and nothing can go
  * missing between the database and the page.
  *
- * A tap looks the word up in three tiers (spec §3.3):
+ * A tap looks the word up in two tiers (spec §6, which stories follow too):
  *   1. the deck already has that exact word → show the card. No `user_cards`
  *      row is written: a card with no row *is* a new card and joins the next
  *      session's allowance on its own (the standing MVP ruling).
- *   2. otherwise → ask the `gloss` endpoint, and offer "у шпил", which runs the
- *      same draft-then-check flow as every other way into the deck.
- *   3. it failed → say which kind of failure it was, honestly.
+ *   2. otherwise → show its transliteration, so he can at least sound it out.
+ *      A "Request translation" button files it into the capture queue; that
+ *      arrives in a later task, and `UnknownWord` is where it goes.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,30 +26,18 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { CardForm } from '@/components/CardForm';
 import { api } from '@/lib/api';
-import { EMPTY_CARD_INPUT, type CardInput } from '@/lib/cardInput';
-import { describeEdgeError } from '@/lib/edge';
 import { errorMessage } from '@/lib/errors';
-import {
-  describeFinishError,
-  describeGlossError,
-  sentenceAt,
-  tokenize,
-  type Gloss,
-} from '@/lib/reader';
+import { describeFinishError, sentenceAt, tokenize } from '@/lib/reader';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
+import { cyrToLat } from '@/lib/transliterate';
 import type { CardRow } from '@/lib/types';
 
-/** What the sheet found for the tapped word. */
-type Lookup = { kind: 'card'; card: CardRow } | { kind: 'gloss'; gloss: Gloss };
-
-/** The word being taken into the deck, with the sentence it was read in. */
-interface AddTarget {
-  sr_cyr: string;
-  en: string;
-  sentence: string;
-}
+/**
+ * What the sheet found for the tapped word: the deck's card, or nothing — in
+ * which case the sheet falls back to the transliteration.
+ */
+type Lookup = { kind: 'card'; card: CardRow } | { kind: 'unknown' };
 
 export default function StoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -56,7 +45,6 @@ export default function StoryScreen() {
   const router = useRouter();
 
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
-  const [adding, setAdding] = useState<AddTarget | null>(null);
 
   // The same `['stories']` list the library screen uses — so arriving from it
   // costs no round trip, and a story opened by URL simply loads the list.
@@ -70,22 +58,19 @@ export default function StoryScreen() {
       : null;
 
   /**
-   * Card first, gloss second — and cached per word, so tapping back and forth
-   * between two words does not pay for the same gloss twice. `retry: false`
-   * because a 502 here is a stale key or a model that answered badly: three
-   * silent retries would turn "AI unavailable" into a ten-second wait.
+   * The deck lookup, cached per word so tapping back and forth between two
+   * words does not re-query either of them. Keyed on the word alone (not the
+   * sentence): the deck knows nothing about context, and keying on both would
+   * re-fetch the same card for every sentence it appears in.
    */
   const lookup = useQuery({
-    queryKey: ['gloss', selected?.word.toLowerCase(), selected?.sentence],
+    queryKey: ['word-lookup', selected?.word.toLowerCase()],
     enabled: selected !== null,
-    retry: false,
     staleTime: Infinity,
     queryFn: async (): Promise<Lookup> => {
       // Non-null: the query only runs with a selection (`enabled` above).
-      const { word, sentence } = selected!;
-      const card = await api.findCardByWord(word);
-      if (card) return { kind: 'card', card };
-      return { kind: 'gloss', gloss: await api.glossWord(word, sentence) };
+      const card = await api.findCardByWord(selected!.word);
+      return card ? { kind: 'card', card } : { kind: 'unknown' };
     },
   });
 
@@ -94,7 +79,7 @@ export default function StoryScreen() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['stories'] }),
-        // The Читање ladder counts finished stories, so the dashboard's stage
+        // The Reading ladder counts finished stories, so the dashboard's stage
         // and goal move the moment this lands.
         queryClient.invalidateQueries({ queryKey: ['progress'] }),
       ]);
@@ -102,26 +87,6 @@ export default function StoryScreen() {
       else router.replace('/reader');
     },
   });
-
-  if (adding) {
-    return (
-      <AddWord
-        target={adding}
-        onDone={() => setAdding(null)}
-        onSaved={() => {
-          // A new card changes both dashboard counts and the next session.
-          void queryClient.invalidateQueries({ queryKey: ['cards'] });
-          void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-          void queryClient.invalidateQueries({ queryKey: ['progress'] });
-          void queryClient.invalidateQueries({ queryKey: ['queue'] });
-          // The word is now a card, so the next tap on it takes the card path.
-          void queryClient.invalidateQueries({ queryKey: ['gloss'] });
-          setAdding(null);
-          setSelectedIndex(null);
-        }}
-      />
-    );
-  }
 
   if (!story) {
     return (
@@ -156,8 +121,8 @@ export default function StoryScreen() {
             {story.title_cyr}
           </Text>
           <Text style={styles.meta} testID="story-meta">
-            НИВО {story.level} · {story.word_count} words
-            {finished ? ' · Прочитано' : ''}
+            Level {story.level} · {story.word_count} words
+            {finished ? ' · Read' : ''}
           </Text>
 
           <Text style={styles.body} testID="story-body">
@@ -195,10 +160,7 @@ export default function StoryScreen() {
               accessibilityLabel="I have finished this story"
               testID="story-finish"
             >
-              <Text style={styles.primaryButtonCyr}>
-                {finish.isPending ? 'Чувам…' : 'Завршио сам'}
-              </Text>
-              <Text style={styles.primaryButtonEn}>
+              <Text style={styles.primaryButtonLabel}>
                 {finish.isPending ? 'Saving…' : 'I have finished this'}
               </Text>
             </Pressable>
@@ -216,13 +178,11 @@ export default function StoryScreen() {
       </ScrollView>
 
       {selected ? (
-        <GlossSheet
+        <WordSheet
           word={selected.word}
+          sentence={selected.sentence}
           state={lookup}
           onClose={() => setSelectedIndex(null)}
-          onAdd={(gloss) =>
-            setAdding({ sr_cyr: gloss.base_form_cyr, en: gloss.en, sentence: selected.sentence })
-          }
         />
       ) : null}
     </View>
@@ -234,13 +194,15 @@ export default function StoryScreen() {
  * the sentence the word came from is the context that makes the answer make
  * sense, so it must stay on screen.
  */
-function GlossSheet({
+function WordSheet({
   word,
+  sentence,
   state,
   onClose,
-  onAdd,
 }: {
   word: string;
+  /** The sentence the word was read in — the context a request is filed with. */
+  sentence: string;
   state: {
     isPending: boolean;
     isError: boolean;
@@ -249,16 +211,15 @@ function GlossSheet({
     refetch: () => unknown;
   };
   onClose: () => void;
-  onAdd: (gloss: Gloss) => void;
 }) {
   // Pulled out of the JSX so the union narrows: `state.data.kind` inside a
   // ternary chain re-widens on every branch.
   const found = state.data;
 
   return (
-    <View style={styles.sheet} testID="gloss-sheet">
+    <View style={styles.sheet} testID="word-sheet">
       <View style={styles.sheetHeader}>
-        <Text style={styles.sheetWord} testID="gloss-word">
+        <Text style={styles.sheetWord} testID="sheet-word">
           {word}
         </Text>
         <Pressable
@@ -266,160 +227,73 @@ function GlossSheet({
           accessibilityRole="button"
           accessibilityLabel="Close"
           style={styles.close}
-          testID="gloss-close"
+          testID="sheet-close"
         >
           <Text style={styles.closeText}>✕</Text>
         </Pressable>
       </View>
 
       {state.isPending ? (
-        <ActivityIndicator color={colors.primary} testID="gloss-loading" />
+        <ActivityIndicator color={colors.primary} testID="sheet-loading" />
       ) : state.isError ? (
         <View style={styles.sheetBody}>
-          <Text style={styles.error} testID="gloss-error">
-            {describeGlossError(state.error)}
+          <Text style={styles.error} testID="sheet-error">
+            {errorMessage(state.error, 'Could not look that word up.')}
           </Text>
           <Pressable
             style={styles.textButton}
             onPress={() => void state.refetch()}
             accessibilityRole="button"
-            testID="gloss-retry"
+            testID="sheet-retry"
           >
             <Text style={styles.textButtonLabel}>Try again</Text>
           </Pressable>
         </View>
       ) : found?.kind === 'card' ? (
-        <View style={styles.sheetBody} testID="gloss-card">
-          <Text style={styles.glossEn}>{found.card.en}</Text>
-          <Text style={styles.glossExample}>{found.card.example_cyr}</Text>
-          <Text style={styles.glossExampleEn}>{found.card.example_en}</Text>
-          {/* No "у шпил": the word is already a card, and it reaches the queue
-              on its own as a new card. Pre-inserting a `user_cards` row here
-              would make it due-but-unstudied and count against nothing. */}
-          <Text style={styles.muted} testID="gloss-in-deck">
-            Већ у шпилу · already in your deck
+        <View style={styles.sheetBody} testID="sheet-card">
+          <Text style={styles.wordEn}>{found.card.en}</Text>
+          <Text style={styles.wordExample}>{found.card.example_cyr}</Text>
+          <Text style={styles.wordExampleEn}>{found.card.example_en}</Text>
+          {/* Nothing to add: the word is already a card, and it reaches the
+              queue on its own as a new card. Pre-inserting a `user_cards` row
+              here would make it due-but-unstudied and count against nothing. */}
+          <Text style={styles.muted} testID="sheet-in-deck">
+            Already in your deck
           </Text>
         </View>
-      ) : found?.kind === 'gloss' ? (
-        <View style={styles.sheetBody} testID="gloss-generated">
-          {found.gloss.base_form_cyr.toLowerCase() === word.toLowerCase() ? null : (
-            <Text style={styles.glossBase} testID="gloss-base">
-              {found.gloss.base_form_cyr}
-            </Text>
-          )}
-          <Text style={styles.glossEn}>{found.gloss.en}</Text>
-          {found.gloss.note ? <Text style={styles.glossNote}>{found.gloss.note}</Text> : null}
-          <Pressable
-            style={({ pressed }) => [styles.addChip, pressed && styles.pressed]}
-            onPress={() => onAdd(found.gloss)}
-            accessibilityRole="button"
-            accessibilityLabel="Add to the deck"
-            testID="gloss-add"
-          >
-            <Text style={styles.addChipText}>＋ у шпил</Text>
-          </Pressable>
-        </View>
+      ) : found?.kind === 'unknown' ? (
+        <UnknownWord word={word} sentence={sentence} />
       ) : null}
     </View>
   );
 }
 
 /**
- * "у шпил": draft the card with the model, check it, save it — the same flow as
- * the deck's add-a-word and the tutor's chips, so a card entering the deck from
- * the reader is identical to one entering it anywhere else.
+ * A tapped word the deck does not have.
  *
- * The manual fallback is not a consolation prize: it is seeded with the base
- * form, the English the gloss gave, and the sentence the word was read in,
- * which is a better example than the model usually writes.
+ * All it can honestly offer today is the transliteration — derived, never
+ * guessed — so he can sound the word out and read on. The translation itself
+ * has to come from somewhere, and that somewhere is the capture queue: a
+ * "Request translation" button belongs in `actions` below, filing the word and
+ * `sentence` as a `requests` row. Both are already in hand here so that adding
+ * it is one component, not a rewrite of the sheet.
  */
-function AddWord({
-  target,
-  onDone,
-  onSaved,
-}: {
-  target: AddTarget;
-  onDone: () => void;
-  onSaved: () => void;
-}) {
-  const [card, setCard] = useState<CardInput | null>(null);
-
-  const generate = useMutation({
-    mutationFn: () => api.generateCard(target.sr_cyr),
-    onSuccess: (drafted) => setCard({ ...drafted, en: drafted.en || target.en }),
-  });
-
-  const save = useMutation({
-    mutationFn: (input: CardInput) => api.addCard(input),
-    onSuccess: onSaved,
-  });
-
-  if (card) {
-    return (
-      <CardForm
-        title="Check the card"
-        value={card}
-        onChange={setCard}
-        onCancel={onDone}
-        cancelLabel="Back to the story"
-        onSubmit={(input) => save.mutate(input)}
-        submitLabel="Add to the deck"
-        busy={save.isPending}
-        error={save.error}
-      />
-    );
-  }
-
+function UnknownWord({ word, sentence }: { word: string; sentence: string }) {
   return (
-    <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-      <View style={styles.content}>
-        <Text style={styles.title}>{target.sr_cyr}</Text>
-        <Text style={styles.muted}>{target.en}</Text>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.primaryButton,
-            generate.isPending && styles.buttonDisabled,
-            pressed && styles.pressed,
-          ]}
-          disabled={generate.isPending}
-          onPress={() => generate.mutate()}
-          accessibilityRole="button"
-          testID="story-add-generate"
-        >
-          <Text style={styles.primaryButtonCyr}>
-            {generate.isPending ? 'Пише…' : 'Draft the card'}
-          </Text>
-        </Pressable>
-
-        {generate.isError ? (
-          <View style={styles.errorCard} testID="story-add-error">
-            {/* Not `describeGlossError`: this is the card-drafting endpoint, and
-                its 502 has only ever one meaning — the AI is unreachable. */}
-            <Text style={styles.error}>{describeEdgeError(generate.error)}</Text>
-            <Pressable
-              style={styles.textButton}
-              onPress={() =>
-                setCard({
-                  ...EMPTY_CARD_INPUT,
-                  sr_cyr: target.sr_cyr,
-                  en: target.en,
-                  example_cyr: target.sentence,
-                })
-              }
-              accessibilityRole="button"
-              testID="story-add-manual"
-            >
-              <Text style={styles.textButtonLabel}>Fill the card in by hand</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        <Pressable style={styles.textButton} onPress={onDone} accessibilityRole="button">
-          <Text style={styles.textButtonLabel}>Back to the story</Text>
-        </Pressable>
-      </View>
-    </ScrollView>
+    <View style={styles.sheetBody} testID="sheet-unknown">
+      <Text style={styles.wordLatin} testID="sheet-transliteration">
+        {cyrToLat(word)}
+      </Text>
+      <Text style={styles.muted}>
+        This word is not in your deck, so there is no translation for it yet — this is how it
+        sounds.
+      </Text>
+      <Text style={styles.wordSentence} testID="sheet-sentence">
+        {sentence}
+      </Text>
+      {/* Actions on this word go here — "Request translation" first. */}
+      <View style={styles.sheetActions} />
+    </View>
   );
 }
 
@@ -445,14 +319,6 @@ const styles = StyleSheet.create({
   wordSelected: { color: colors.primary, fontWeight: '700' },
   muted: { fontSize: 14, color: colors.textMuted },
   error: { color: colors.danger, fontSize: 14 },
-  errorCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
   primaryButton: {
     minHeight: touchTarget + 8,
     alignItems: 'center',
@@ -461,8 +327,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     paddingVertical: spacing.sm,
   },
-  primaryButtonCyr: { color: colors.primaryOn, fontSize: 22, fontWeight: '700' },
-  primaryButtonEn: { color: colors.primaryOn, fontSize: 13, opacity: 0.85 },
+  primaryButtonLabel: { color: colors.primaryOn, fontSize: 18, fontWeight: '700' },
   buttonDisabled: { backgroundColor: colors.disabled },
   sheetSpacer: { height: 220 },
   sheet: {
@@ -495,21 +360,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeText: { fontSize: 20, color: colors.textMuted },
-  glossBase: { fontSize: 20, fontWeight: '600', color: colors.text },
-  glossEn: { fontSize: 18, color: colors.text },
-  glossNote: { fontSize: 14, color: colors.textMuted },
-  glossExample: { fontSize: 16, color: colors.text },
-  glossExampleEn: { fontSize: 14, color: colors.textMuted },
-  addChip: {
-    minHeight: touchTarget - 8,
-    alignSelf: 'flex-start',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.xs,
-  },
-  addChipText: { color: colors.primaryOn, fontSize: 16, fontWeight: '600' },
+  wordEn: { fontSize: 18, color: colors.text },
+  wordExample: { fontSize: 16, color: colors.text },
+  wordExampleEn: { fontSize: 14, color: colors.textMuted },
+  wordLatin: { fontSize: 24, fontWeight: '600', color: colors.primary },
+  wordSentence: { fontSize: 14, color: colors.textMuted, fontStyle: 'italic' },
+  sheetActions: { gap: spacing.sm },
   textButton: { minHeight: touchTarget, alignItems: 'center', justifyContent: 'center' },
   textButtonLabel: { color: colors.primary, fontSize: 16, fontWeight: '600' },
   pressed: { opacity: 0.8 },

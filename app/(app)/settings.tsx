@@ -19,6 +19,7 @@ import {
 
 import { api, DEFAULT_NEW_PER_DAY } from '@/lib/api';
 import { confirmAction } from '@/lib/confirm';
+import { errorMessage } from '@/lib/errors';
 import { useAuth } from '@/lib/stores/auth';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import type { SettingsRow } from '@/lib/types';
@@ -83,9 +84,7 @@ export default function SettingsScreen() {
     return (
       <View style={styles.centered}>
         <Text style={styles.error}>
-          {settings.error instanceof Error
-            ? settings.error.message
-            : 'Could not load your settings.'}
+          {errorMessage(settings.error, 'Could not load your settings.')}
         </Text>
         <Pressable
           style={styles.textButton}
@@ -132,7 +131,7 @@ export default function SettingsScreen() {
           <View style={styles.divider} />
           <ToggleRow
             title="Audio"
-            subtitle="Pronounce words with text-to-speech"
+            subtitle="Play a card’s recorded pronunciation, where there is one"
             value={ttsEnabled}
             onChange={(value) => save.mutate({ tts_enabled: value })}
             testID="toggle-tts"

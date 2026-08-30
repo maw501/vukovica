@@ -366,29 +366,10 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
-# Edge Functions. Each declares the shared import map at
-# `supabase/functions/deno.json` — the CLI does NOT pick that up implicitly, and
-# without it the npm: specifiers fail to resolve at deploy time.
-#
-# `verify_jwt = false` turns off the *platform's* JWT gate, which would reject
-# the CORS preflight before our handler ever runs. Auth is enforced inside each
-# function by `_shared/auth.ts#getAuthenticatedUser`; deploy with
-# `--no-verify-jwt` to match.
-[functions.tutor]
-import_map = "./functions/deno.json"
-verify_jwt = false
-
-[functions.generate]
-import_map = "./functions/deno.json"
-verify_jwt = false
-
-[functions.tts]
-import_map = "./functions/deno.json"
-verify_jwt = false
-
-[functions.story]
-import_map = "./functions/deno.json"
-verify_jwt = false
+# No Edge Functions. The app talks to Postgres directly under RLS and to the
+# public `audio` bucket for pre-generated clips; nothing it does needs a
+# server-side key, so `supabase/functions/` was deleted in phase 3 rather than
+# left deployed and unused.
 
 [analytics]
 enabled = true

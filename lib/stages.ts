@@ -13,8 +13,8 @@
 import { CYRILLIC_ALPHABET } from '@/lib/drills';
 import type { DrillStatRow } from '@/lib/types';
 
-/** Азбука → Речи → Читање → Разговор, in order. */
-export type Stage = 'azbuka' | 'reci' | 'citanje' | 'razgovor';
+/** Alphabet → Words → Reading → Books, in order. */
+export type Stage = 'alphabet' | 'words' | 'reading' | 'books';
 
 /** Vuk's alphabet is the whole of the first stage: thirty letters, no more. */
 export const LETTER_TOTAL = 30;
@@ -28,20 +28,26 @@ const MASTERY_MIN_ACCURACY = 0.9;
 /** How many unmastered letters the trainer is pointed at. */
 export const WEAKEST_LIMIT = 5;
 
-/** The Речи ladder: known words. */
+/** The Words ladder: known words. */
 export const KNOWN_MILESTONES = [100, 300, 600] as const;
 export type KnownMilestone = (typeof KNOWN_MILESTONES)[number];
 
-/** The Читање ladder: stories finished. */
+/** The Reading ladder: stories finished. */
 export const STORY_MILESTONES = [1, 5, 20] as const;
 export type StoryMilestone = (typeof STORY_MILESTONES)[number];
 
-/** Читање becomes the primary stage at this many known words. */
-const CITANJE_KNOWN_WORDS = 100;
+/** Reading becomes the primary stage at this many known words. */
+const READING_KNOWN_WORDS = 100;
 
-/** Разговор needs both of these. */
-const RAZGOVOR_KNOWN_WORDS = 300;
-const RAZGOVOR_STORIES = 5;
+/** Books needs both of these. */
+const BOOKS_KNOWN_WORDS = 300;
+const BOOKS_STORIES = 5;
+
+/**
+ * The capstone goal, printed verbatim once the Books stage is reached. The
+ * Cyrillic in it is the book's own title — content, not chrome.
+ */
+const BOOKS_GOAL = 'Read Погоди колико те волим to your son';
 
 export interface LetterMastery {
   /** Letters of the alphabet meeting the mastery bar. 0..30. */
@@ -58,6 +64,8 @@ export interface Progress {
   knownMilestone: KnownMilestone;
   storiesRead: number;
   storyMilestone: StoryMilestone;
+  /** `books` rows with a `finished_at`. Shown, but no stage turns on it yet. */
+  booksFinished: number;
   /** One short line, rendered verbatim by the dashboard. */
   nextGoal: string;
 }
@@ -69,6 +77,8 @@ export interface ProgressInputs {
   knownWords: number;
   /** `stories` rows with a `finished_at`. */
   storiesRead: number;
+  /** `books` rows with a `finished_at`. */
+  booksFinished: number;
 }
 
 /** One alphabet letter's lifetime record, folded out of the raw rows. */
@@ -119,7 +129,7 @@ function isMastered({ attempts, accuracy }: LetterRecord): boolean {
 
 /**
  * The alphabet letters the user has mastered — what the trainer marks in its
- * summary, and the numerator of the Азбука goal.
+ * summary, and the numerator of the Alphabet goal.
  */
 export function masteredLetters(stats: readonly DrillStatRow[]): Set<string> {
   const mastered = new Set<string>();
@@ -155,15 +165,18 @@ function nextRung<T extends number>(rungs: readonly T[], count: number): T {
 /**
  * Which stage the dashboard leads with.
  *
- * Азбука gates everything: it is the first stage and it runs "until all thirty
+ * Alphabet gates everything: it is the first stage and it runs "until all thirty
  * are mastered", so a learner with plenty of words but a shaky letter is still
  * sent back to the trainer. Above it, the highest satisfied stage wins.
+ *
+ * Books deliberately does *not* turn on `booksFinished`: it is the stage in
+ * which he reads real books, so finishing one must not end it.
  */
 function stageFor(masteredCount: number, knownWords: number, storiesRead: number): Stage {
-  if (masteredCount < LETTER_TOTAL) return 'azbuka';
-  if (knownWords >= RAZGOVOR_KNOWN_WORDS && storiesRead >= RAZGOVOR_STORIES) return 'razgovor';
-  if (knownWords >= CITANJE_KNOWN_WORDS) return 'citanje';
-  return 'reci';
+  if (masteredCount < LETTER_TOTAL) return 'alphabet';
+  if (knownWords >= BOOKS_KNOWN_WORDS && storiesRead >= BOOKS_STORIES) return 'books';
+  if (knownWords >= READING_KNOWN_WORDS) return 'reading';
+  return 'words';
 }
 
 /** "4 more letters" / "1 more letter". */
@@ -172,39 +185,40 @@ function pluralise(n: number, one: string, many: string): string {
 }
 
 /**
- * The single line the dashboard renders under the stage name. Serbian stage
- * name, English goal — the goal is read at a glance while half awake, the stage
- * name is the thing worth learning.
+ * The single line the dashboard renders under the stage name — English, like
+ * every other piece of chrome in the app, so it is read at a glance while half
+ * awake. The only Serbian that appears is a book's own title.
  */
 function nextGoalFor(stage: Stage, progress: Omit<Progress, 'nextGoal'>): string {
   switch (stage) {
-    case 'azbuka': {
+    case 'alphabet': {
       const { mastered, total } = progress.letterMastery;
-      return `Азбука — master ${pluralise(total - mastered, 'more letter', 'more letters')} (${mastered}/${total})`;
+      return `Alphabet — master ${pluralise(total - mastered, 'more letter', 'more letters')} (${mastered}/${total})`;
     }
-    case 'reci': {
+    case 'words': {
       const target = progress.knownMilestone;
       const left = Math.max(0, target - progress.knownWords);
-      return `Речи — learn ${pluralise(left, 'more word', 'more words')} (${progress.knownWords}/${target})`;
+      return `Words — learn ${pluralise(left, 'more word', 'more words')} (${progress.knownWords}/${target})`;
     }
-    case 'citanje': {
+    case 'reading': {
       const target = progress.storyMilestone;
       const left = target - progress.storiesRead;
-      // The story ladder can top out inside Читање — twenty stories read on a
+      // The story ladder can top out inside Reading — twenty stories read on a
       // vocabulary still short of 300 leaves the stage but not the ladder. Ask
       // for "0 more stories (25/20)" and the goal stops being a goal, so point
-      // at what actually opens Разговор from here: the word count. The stage is
-      // Читање exactly when known < 300, so this remainder is never zero.
+      // at what actually opens Books from here: the word count. The stage is
+      // Reading exactly when known < 300, so this remainder is never zero.
       if (left <= 0) {
-        const words = RAZGOVOR_KNOWN_WORDS - progress.knownWords;
-        return `Читање — ${pluralise(words, 'word', 'words')} to Разговор (${progress.knownWords}/${RAZGOVOR_KNOWN_WORDS})`;
+        const words = BOOKS_KNOWN_WORDS - progress.knownWords;
+        return `Reading — ${pluralise(words, 'word', 'words')} to Books (${progress.knownWords}/${BOOKS_KNOWN_WORDS})`;
       }
-      return `Читање — read ${pluralise(left, 'more story', 'more stories')} (${progress.storiesRead}/${target})`;
+      return `Reading — read ${pluralise(left, 'more story', 'more stories')} (${progress.storiesRead}/${target})`;
     }
-    case 'razgovor':
-      // No ladder here: the goal is the habit. Both ladders keep showing
-      // alongside it as milestones, they are just not the headline any more.
-      return 'Разговор — have a conversation today';
+    case 'books':
+      // No ladder here: the goal is the book itself, and it does not change
+      // when one is finished. Both ladders keep showing alongside it as
+      // milestones, they are just not the headline any more.
+      return BOOKS_GOAL;
   }
 }
 
@@ -219,6 +233,7 @@ export function computeProgress({
   drillStats,
   knownWords,
   storiesRead,
+  booksFinished,
 }: ProgressInputs): Progress {
   const records = letterRecords(drillStats);
   let mastered = 0;
@@ -240,6 +255,7 @@ export function computeProgress({
     knownMilestone: nextRung(KNOWN_MILESTONES, knownWords),
     storiesRead,
     storyMilestone: nextRung(STORY_MILESTONES, storiesRead),
+    booksFinished,
   };
 
   return { ...withoutGoal, nextGoal: nextGoalFor(stage, withoutGoal) };

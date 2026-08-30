@@ -1,5 +1,5 @@
 /**
- * Ћирилица — the Cyrillic typing trainer.
+ * The Cyrillic typing trainer.
  *
  * Ten words a round, drawn from the deck and weighted towards the letters the
  * user gets wrong (`pickDrillWords`), in either direction: read Cyrillic and
@@ -55,8 +55,8 @@ const SUMMARY_LETTERS = 5;
 type Mode = 'cyr-lat' | 'lat-cyr';
 
 const MODES: { mode: Mode; label: string; hint: string }[] = [
-  { mode: 'cyr-lat', label: 'Ћир → Lat', hint: 'Read the Cyrillic, type the Latin' },
-  { mode: 'lat-cyr', label: 'Lat → Ћир', hint: 'Read the Latin, type the Cyrillic' },
+  { mode: 'cyr-lat', label: 'Cyrillic → Latin', hint: 'Read the Cyrillic, type the Latin' },
+  { mode: 'lat-cyr', label: 'Latin → Cyrillic', hint: 'Read the Latin, type the Cyrillic' },
 ];
 
 /** The answer the user is being asked for, in the script they must type it in. */
@@ -280,7 +280,7 @@ export default function TrainerScreen() {
   const masteryBar = (
     <View style={styles.mastery} testID="letter-mastery">
       <Text style={styles.masteryLabel}>
-        Савладано {mastered.size}/{LETTER_TOTAL}
+        Mastered {mastered.size}/{LETTER_TOTAL}
       </Text>
       <View style={styles.masteryTrack}>
         <View
@@ -307,7 +307,9 @@ export default function TrainerScreen() {
     return (
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.content} testID="drill-summary">
-          <Text style={styles.summaryTitle}>{right === results.length ? 'Браво!' : 'Готово'}</Text>
+          <Text style={styles.summaryTitle}>
+            {right === results.length ? 'Perfect round!' : 'Round finished'}
+          </Text>
           <Text style={styles.summaryScore} testID="drill-score">
             {right} / {results.length}
           </Text>
@@ -413,7 +415,7 @@ export default function TrainerScreen() {
           {marked ? (
             <View style={styles.feedback} testID="drill-feedback">
               <Text style={[styles.verdict, marked.correct ? styles.verdictRight : styles.verdictWrong]}>
-                {marked.correct ? 'Тачно!' : 'Не баш'}
+                {marked.correct ? 'Correct' : 'Not quite'}
               </Text>
               <MarkedAnswer expected={expected} score={marked} />
               <Text style={styles.otherScript}>
@@ -456,7 +458,7 @@ export default function TrainerScreen() {
 
 /**
  * Which of the letters just drilled are mastered — the round measured against
- * the goal of the Азбука stage rather than against itself.
+ * the goal of the Alphabet stage rather than against itself.
  *
  * Only letters this round actually touched are listed: the rest of the alphabet
  * is the header's business. A letter that crossed the bar *during* the round is
@@ -487,7 +489,7 @@ function MasteredLetters({
             return (
               <View key={letter} style={styles.masteredLetter} testID={`mastered-${letter}`}>
                 <Text style={styles.masteredLetterCyr}>{letter}</Text>
-                <Text style={styles.masteredLetterMark}>{isNew ? 'ново' : '✓'}</Text>
+                <Text style={styles.masteredLetterMark}>{isNew ? 'new' : '✓'}</Text>
               </View>
             );
           })}

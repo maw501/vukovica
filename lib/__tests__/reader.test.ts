@@ -1,16 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { EdgeFunctionError } from '@/lib/errors';
-import {
-  describeFinishError,
-  describeGlossError,
-  describeStoryError,
-  parseGloss,
-  sentenceAt,
-  suggestedLevel,
-  tokenize,
-  type Token,
-} from '@/lib/reader';
+import { describeFinishError, sentenceAt, tokenize, type Token } from '@/lib/reader';
 
 /**
  * The body of the story sitting in the local database, verbatim (including the
@@ -216,78 +206,8 @@ describe('sentenceAt', () => {
 });
 
 // ---------------------------------------------------------------------------
-// suggestedLevel
+// describeFinishError
 // ---------------------------------------------------------------------------
-
-describe('suggestedLevel', () => {
-  it('suggests level 1 below 300 known words', () => {
-    expect(suggestedLevel(0)).toBe(1);
-    expect(suggestedLevel(299)).toBe(1);
-  });
-
-  it('suggests level 2 from 300 to 599', () => {
-    expect(suggestedLevel(300)).toBe(2);
-    expect(suggestedLevel(599)).toBe(2);
-  });
-
-  it('suggests level 3 from 600 up', () => {
-    expect(suggestedLevel(600)).toBe(3);
-    expect(suggestedLevel(50_000)).toBe(3);
-  });
-
-  it('never goes below level 1 on nonsense input', () => {
-    expect(suggestedLevel(-1)).toBe(1);
-    expect(suggestedLevel(Number.NaN)).toBe(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// parseGloss
-// ---------------------------------------------------------------------------
-
-describe('parseGloss', () => {
-  it('takes the three fields and trims them', () => {
-    expect(parseGloss({ base_form_cyr: ' мачка ', en: ' cat ', note: ' accusative ' })).toEqual({
-      base_form_cyr: 'мачка',
-      en: 'cat',
-      note: 'accusative',
-    });
-  });
-
-  it('treats a missing note as no note — plenty of words need no explaining', () => {
-    expect(parseGloss({ base_form_cyr: 'мачка', en: 'cat' }).note).toBe('');
-  });
-
-  it('refuses a payload with no base form or no English rather than rendering “undefined”', () => {
-    expect(() => parseGloss({ en: 'cat' })).toThrow(/incomplete/i);
-    expect(() => parseGloss({ base_form_cyr: 'мачка', en: '  ' })).toThrow(/incomplete/i);
-    expect(() => parseGloss(null)).toThrow(/incomplete/i);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Error wording — the two 502 codes mean opposite things to the user
-// ---------------------------------------------------------------------------
-
-describe('describeGlossError', () => {
-  it('blames the API key for provider_error', () => {
-    const message = describeGlossError(new EdgeFunctionError(502, 'provider_error'));
-    expect(message).toMatch(/API key/i);
-  });
-
-  it('does NOT blame the API key for invalid_gloss — the key is fine', () => {
-    const message = describeGlossError(new EdgeFunctionError(502, 'invalid_gloss'));
-    expect(message).not.toMatch(/key/i);
-    expect(message).toMatch(/try again/i);
-  });
-
-  it('still says something sensible for an unknown 502, a 401 and a 400', () => {
-    expect(describeGlossError(new EdgeFunctionError(502, 'kaboom'))).toMatch(/API key/i);
-    expect(describeGlossError(new EdgeFunctionError(401, 'unauthorized'))).toMatch(/[Ss]ign in/);
-    expect(describeGlossError(new EdgeFunctionError(400, 'word_required'))).toMatch(/rejected/i);
-    expect(describeGlossError(new Error('offline'))).toBe('offline');
-  });
-});
 
 describe('describeFinishError', () => {
   it('turns PostgREST’s “no rows returned” into something about the story', () => {
@@ -308,23 +228,5 @@ describe('describeFinishError', () => {
 
   it('has something to say about a thrown thing with no message at all', () => {
     expect(describeFinishError(undefined)).toMatch(/could not be saved/i);
-  });
-});
-
-describe('describeStoryError', () => {
-  it('blames the API key for provider_error', () => {
-    expect(describeStoryError(new EdgeFunctionError(502, 'provider_error'))).toMatch(/API key/i);
-  });
-
-  it('does NOT blame the API key for invalid_story — that is the model, not the key', () => {
-    const message = describeStoryError(new EdgeFunctionError(502, 'invalid_story'));
-    expect(message).not.toMatch(/key/i);
-    expect(message).toMatch(/try again/i);
-  });
-
-  it('reports a failed insert as a server problem, not an AI one', () => {
-    const message = describeStoryError(new EdgeFunctionError(500, 'insert_failed'));
-    expect(message).not.toMatch(/key/i);
-    expect(message).toMatch(/server/i);
   });
 });

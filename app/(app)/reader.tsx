@@ -1,19 +1,18 @@
 /**
- * Читање — the library.
+ * The reader's library.
  *
  * Two sections over one query: what is still to read, and what has been read.
  * They come from the same `['stories']` list rather than two filtered queries,
  * so finishing a story moves it between them without the two ever disagreeing
  * about a row.
  *
- * "Нова прича" is the only way a story gets here. The level picker defaults to
- * what the learner's vocabulary suggests (spec §3.3) but never insists — the
- * whole point of the reader is that he chooses what he feels like reading.
+ * Stories are seeded rather than generated (phase 3 removed the `story` Edge
+ * Function), so this screen only lists and opens them — there is nothing here
+ * that can fail beyond the read itself.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -21,42 +20,16 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
-import {
-  describeStoryError,
-  STORY_LEVEL_BLURB,
-  STORY_LEVELS,
-  suggestedLevel,
-  type StoryLevel,
-} from '@/lib/reader';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import type { StoryRow } from '@/lib/types';
 
 export default function ReaderScreen() {
-  const [composing, setComposing] = useState(false);
-
   const stories = useQuery({ queryKey: ['stories'], queryFn: () => api.listStories() });
-  // Only for the level the picker opens on; the list does not wait on it.
-  const progress = useQuery({ queryKey: ['progress'], queryFn: () => api.getProgress() });
-
-  if (composing) {
-    return (
-      <NewStory
-        // null, not a guess: the picker says out loud that a level "suits how
-        // many words you know", and it must only say that when it knows.
-        suggested={progress.isSuccess ? suggestedLevel(progress.data.knownWords) : null}
-        suggestionFailed={progress.isError}
-        onRetrySuggestion={() => void progress.refetch()}
-        onCancel={() => setComposing(false)}
-        onCreated={() => setComposing(false)}
-      />
-    );
-  }
 
   const all = stories.data ?? [];
   const unread = all.filter((story) => story.finished_at === null);
@@ -74,17 +47,6 @@ export default function ReaderScreen() {
       }
     >
       <View style={styles.content}>
-        <Pressable
-          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-          onPress={() => setComposing(true)}
-          accessibilityRole="button"
-          accessibilityLabel="New story"
-          testID="reader-new"
-        >
-          <Text style={styles.primaryButtonCyr}>Нова прича</Text>
-          <Text style={styles.primaryButtonEn}>New story</Text>
-        </Pressable>
-
         {stories.isPending ? (
           <ActivityIndicator color={colors.primary} style={styles.loading} />
         ) : stories.isError ? (
@@ -98,24 +60,23 @@ export default function ReaderScreen() {
           </View>
         ) : all.length === 0 ? (
           <View style={styles.centred}>
-            <Text style={styles.emptyCyr}>Читање</Text>
+            <Text style={styles.emptyTitle}>Nothing to read yet</Text>
             <Text style={styles.muted} testID="reader-empty">
-              Nothing to read yet. Tap Нова прича and one will be written for you, using the
-              words you already know.
+              Stories are added to your library for you. Pull down to check for new ones.
             </Text>
           </View>
         ) : (
           <>
             <Section
-              title="За читање"
-              subtitle="To read"
+              title="To read"
+              count={unread.length}
               stories={unread}
-              empty="Everything here has been read. Ask for a new one."
+              empty="Everything here has been read."
               testID="reader-unread"
             />
             <Section
-              title="Прочитано"
-              subtitle="Read"
+              title="Read"
+              count={finished.length}
               stories={finished}
               empty="Nothing finished yet."
               testID="reader-finished"
@@ -129,13 +90,13 @@ export default function ReaderScreen() {
 
 function Section({
   title,
-  subtitle,
+  count,
   stories,
   empty,
   testID,
 }: {
   title: string;
-  subtitle: string;
+  count: number;
   stories: readonly StoryRow[];
   empty: string;
   testID: string;
@@ -144,9 +105,7 @@ function Section({
     <View style={styles.section} testID={testID}>
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>{title}</Text>
-        <Text style={styles.sectionSubtitle}>
-          {subtitle} · {stories.length}
-        </Text>
+        <Text style={styles.sectionSubtitle}>{count}</Text>
       </View>
       {stories.length === 0 ? (
         <Text style={styles.muted} testID={`${testID}-empty`}>
@@ -183,170 +142,8 @@ function StoryRowItem({ story }: { story: StoryRow }) {
 function LevelBadge({ level }: { level: number }) {
   return (
     <View style={styles.badge} testID={`level-badge-${level}`}>
-      <Text style={styles.badgeText}>НИВО {level}</Text>
+      <Text style={styles.badgeText}>Level {level}</Text>
     </View>
-  );
-}
-
-/**
- * The "Нова прича" form: which level, and optionally what about.
- *
- * `suggested` is null until the vocabulary count is actually known (and stays
- * null if it failed). The form works either way — the picker just opens on
- * level 1 — but it never *claims* a level suits him on the strength of a
- * `?? 0` fallback, which would tell a 600-word learner that level 1 is right
- * for him and give no hint that anything had gone wrong.
- *
- * The chosen level is deliberately not seeded into state from `suggested`:
- * state frozen at mount would ignore a count that lands a moment later. Until
- * he picks one himself, the picker simply follows the suggestion.
- *
- * Generation is the one thing here that can fail in a way the user must be told
- * about honestly — `describeStoryError` keeps the "check the key" wording off
- * the failures where the key is not the problem — so the error stays on screen
- * with the form filled in, ready to send again.
- */
-function NewStory({
-  suggested,
-  suggestionFailed,
-  onRetrySuggestion,
-  onCancel,
-  onCreated,
-}: {
-  suggested: StoryLevel | null;
-  suggestionFailed: boolean;
-  onRetrySuggestion: () => void;
-  onCancel: () => void;
-  onCreated: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const router = useRouter();
-  const [chosen, setChosen] = useState<StoryLevel | null>(null);
-  const level: StoryLevel = chosen ?? suggested ?? 1;
-  const [topic, setTopic] = useState('');
-
-  const create = useMutation({
-    mutationFn: () => api.createStory(level, topic),
-    onSuccess: async (story) => {
-      // Awaited before navigating: the reading view looks the story up in this
-      // very list, and a push onto a stale cache would land on "not found".
-      await queryClient.invalidateQueries({ queryKey: ['stories'] });
-      onCreated();
-      router.push(`/story/${story.id}`);
-    },
-  });
-
-  return (
-    <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-      <View style={styles.content}>
-        <Text style={styles.formTitle}>Нова прича</Text>
-
-        <Text style={styles.fieldLabel}>Level</Text>
-        <View style={styles.levelRow}>
-          {STORY_LEVELS.map((option) => (
-            <Pressable
-              key={option}
-              style={({ pressed }) => [
-                styles.levelChip,
-                level === option && styles.levelChipSelected,
-                pressed && styles.pressed,
-              ]}
-              onPress={() => setChosen(option)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: level === option }}
-              testID={`new-story-level-${option}`}
-            >
-              <Text style={[styles.levelChipCyr, level === option && styles.levelChipTextOn]}>
-                НИВО {option}
-              </Text>
-              <Text style={[styles.levelChipBlurb, level === option && styles.levelChipTextOn]}>
-                {STORY_LEVEL_BLURB[option]}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        {suggested !== null ? (
-          <Text style={styles.muted} testID="new-story-suggestion">
-            {suggested === level
-              ? `Level ${suggested} suits how many words you know.`
-              : `Suggested for you: level ${suggested}.`}
-          </Text>
-        ) : suggestionFailed ? (
-          <View style={styles.suggestionUnknown} testID="new-story-suggestion-error">
-            <Text style={styles.muted}>
-              Could not check how many words you know, so there is no suggestion — pick the level
-              you feel like reading.
-            </Text>
-            <Pressable
-              style={styles.textButton}
-              onPress={onRetrySuggestion}
-              accessibilityRole="button"
-              testID="new-story-suggestion-retry"
-            >
-              <Text style={styles.textButtonLabel}>Try again</Text>
-            </Pressable>
-          </View>
-        ) : (
-          <Text style={styles.muted} testID="new-story-suggestion-pending">
-            Working out which level suits you…
-          </Text>
-        )}
-
-        <Text style={styles.fieldLabel}>What about? (optional)</Text>
-        <TextInput
-          style={styles.input}
-          value={topic}
-          onChangeText={setTopic}
-          placeholder="a cat in the garden"
-          placeholderTextColor={colors.textMuted}
-          autoCorrect={false}
-          testID="new-story-topic"
-        />
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.primaryButton,
-            create.isPending && styles.buttonDisabled,
-            pressed && styles.pressed,
-          ]}
-          disabled={create.isPending}
-          onPress={() => create.mutate()}
-          accessibilityRole="button"
-          testID="new-story-write"
-        >
-          <Text style={styles.primaryButtonCyr}>
-            {create.isPending ? 'Пише…' : 'Напиши причу'}
-          </Text>
-          <Text style={styles.primaryButtonEn}>
-            {create.isPending ? 'Writing…' : 'Write the story'}
-          </Text>
-        </Pressable>
-
-        {create.isError ? (
-          <View style={styles.errorCard} testID="new-story-error">
-            <Text style={styles.error}>{describeStoryError(create.error)}</Text>
-            <Pressable
-              style={styles.textButton}
-              onPress={() => create.mutate()}
-              disabled={create.isPending}
-              accessibilityRole="button"
-              testID="new-story-retry"
-            >
-              <Text style={styles.textButtonLabel}>Try again</Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        <Pressable
-          style={styles.textButton}
-          onPress={onCancel}
-          accessibilityRole="button"
-          testID="new-story-cancel"
-        >
-          <Text style={styles.textButtonLabel}>Back to the library</Text>
-        </Pressable>
-      </View>
-    </ScrollView>
   );
 }
 
@@ -360,7 +157,7 @@ const styles = StyleSheet.create({
   },
   loading: { marginVertical: spacing.xl },
   centred: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.xl },
-  emptyCyr: { fontSize: 34, fontWeight: '700', color: colors.primary },
+  emptyTitle: { fontSize: 26, fontWeight: '700', color: colors.text, textAlign: 'center' },
   muted: { fontSize: 14, color: colors.textMuted, textAlign: 'center' },
   section: { gap: spacing.sm },
   sectionHeader: { gap: 2 },
@@ -391,54 +188,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   badgeText: { fontSize: 12, fontWeight: '600', color: colors.primary },
-  formTitle: { fontSize: 26, fontWeight: '700', color: colors.text },
-  fieldLabel: { fontSize: 13, color: colors.textMuted },
-  levelRow: { gap: spacing.sm },
-  levelChip: {
-    minHeight: touchTarget,
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  levelChipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  levelChipCyr: { fontSize: 17, fontWeight: '600', color: colors.text },
-  levelChipBlurb: { fontSize: 13, color: colors.textMuted },
-  levelChipTextOn: { color: colors.primaryOn },
-  suggestionUnknown: { gap: spacing.xs },
-  input: {
-    minHeight: touchTarget,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: 16,
-    color: colors.text,
-  },
-  primaryButton: {
-    minHeight: touchTarget + 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.md,
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.sm,
-  },
-  primaryButtonCyr: { color: colors.primaryOn, fontSize: 22, fontWeight: '700' },
-  primaryButtonEn: { color: colors.primaryOn, fontSize: 13, opacity: 0.85 },
-  buttonDisabled: { backgroundColor: colors.disabled },
-  errorCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
   error: { color: colors.danger, fontSize: 14 },
   textButton: { minHeight: touchTarget, alignItems: 'center', justifyContent: 'center' },
   textButtonLabel: { color: colors.primary, fontSize: 16, fontWeight: '600' },

@@ -3,14 +3,13 @@ import { describe, expect, it } from 'vitest';
 import {
   EMPTY_CARD_INPUT,
   cardInputErrors,
-  parseGeneratedCard,
   toCyrillicHeadword,
   trimCardInput,
   type CardInput,
 } from '@/lib/cardInput';
 
-/** A well-formed `/generate` `new_card` payload. */
-const generated = {
+/** A complete, well-formed card. */
+const valid: CardInput = {
   sr_cyr: 'кашика',
   en: 'spoon',
   pos: 'noun',
@@ -20,67 +19,6 @@ const generated = {
   example_en: 'Pass me the spoon, please.',
   domain: 'food',
 };
-
-const valid: CardInput = { ...generated };
-
-describe('parseGeneratedCard', () => {
-  it('accepts a well-formed payload', () => {
-    expect(parseGeneratedCard(generated)).toEqual(valid);
-  });
-
-  it('trims whitespace on every string field', () => {
-    expect(
-      parseGeneratedCard({ ...generated, sr_cyr: '  кашика \n', en: ' spoon ' }),
-    ).toMatchObject({ sr_cyr: 'кашика', en: 'spoon' });
-  });
-
-  it('treats a missing, empty or non-string gender/aspect as null', () => {
-    const { gender: _g, aspect: _a, ...withoutOptionals } = generated;
-    expect(parseGeneratedCard(withoutOptionals)).toMatchObject({ gender: null, aspect: null });
-    expect(parseGeneratedCard({ ...generated, gender: '', aspect: '  ' })).toMatchObject({
-      gender: null,
-      aspect: null,
-    });
-    expect(parseGeneratedCard({ ...generated, gender: 7 })).toMatchObject({ gender: null });
-  });
-
-  it('keeps a real aspect through', () => {
-    expect(parseGeneratedCard({ ...generated, pos: 'verb', aspect: 'impf' })).toMatchObject({
-      aspect: 'impf',
-    });
-  });
-
-  it('ignores unknown extra fields rather than passing them to the insert', () => {
-    const parsed = parseGeneratedCard({ ...generated, id: 'nope', audio_path: '/x.mp3' });
-    expect(Object.keys(parsed).sort()).toEqual(Object.keys(valid).sort());
-  });
-
-  it.each([
-    ['null', null],
-    ['a string', '"кашика"'],
-    ['an array', [generated]],
-    ['a number', 42],
-  ])('rejects %s', (_label, value) => {
-    expect(() => parseGeneratedCard(value)).toThrow();
-  });
-
-  it.each(['sr_cyr', 'en', 'pos', 'example_cyr', 'example_en', 'domain'] as const)(
-    'rejects a payload with a missing %s',
-    (field) => {
-      const broken = { ...generated };
-      delete (broken as Record<string, unknown>)[field];
-      expect(() => parseGeneratedCard(broken)).toThrow(/incomplete|missing|invalid/i);
-    },
-  );
-
-  it('rejects a payload whose required field is blank', () => {
-    expect(() => parseGeneratedCard({ ...generated, en: '   ' })).toThrow();
-  });
-
-  it('rejects a payload whose required field is the wrong type', () => {
-    expect(() => parseGeneratedCard({ ...generated, sr_cyr: 123 })).toThrow();
-  });
-});
 
 describe('cardInputErrors', () => {
   it('finds nothing wrong with a complete card', () => {

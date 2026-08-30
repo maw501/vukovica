@@ -4,8 +4,8 @@
  *
  * The stage decides emphasis only — nothing here is ever locked. Whatever the
  * stage, the review/streak card stays put (reviews are the daily habit) and
- * every activity keeps a row, in stage order, with chat last until it is the
- * stage itself.
+ * every activity keeps a row, in stage order, minus whatever the top of the
+ * screen already leads with.
  */
 
 import { useQuery } from '@tanstack/react-query';
@@ -21,50 +21,58 @@ import {
 } from 'react-native';
 
 import { api, DEFAULT_NEW_PER_DAY } from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import type { Stage } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 
-/** The five places the dashboard can send the learner. */
-type ActivityKey = 'trainer' | 'review' | 'reader' | 'chat' | 'deck';
+/** The four places the dashboard can send the learner. */
+type ActivityKey = 'trainer' | 'review' | 'reader' | 'deck';
 
 interface Activity {
-  /** Serbian label -- the point of the app is to make Cyrillic ordinary. */
-  cyr: string;
-  en: string;
-  /** null until the screen exists; the row renders disabled until then. */
-  href: Href | null;
+  /** English, like every other piece of chrome. */
+  label: string;
+  /** One line saying what it is for, under the label. */
+  blurb: string;
+  href: Href;
 }
 
 const ACTIVITIES: Record<ActivityKey, Activity> = {
-  trainer: { cyr: 'Ћирилица', en: 'Cyrillic trainer', href: '/trainer' },
-  review: { cyr: 'Учи', en: 'Review', href: '/review' },
-  reader: { cyr: 'Читање', en: 'Reader', href: '/reader' },
-  chat: { cyr: 'Разговор', en: 'Chat with tutor', href: '/chat' },
-  deck: { cyr: 'Шпил', en: 'Deck', href: '/deck' },
+  trainer: {
+    label: 'Cyrillic trainer',
+    blurb: 'Type the alphabet until it is second nature',
+    href: '/trainer',
+  },
+  review: { label: 'Review', blurb: 'Today’s cards', href: '/review' },
+  reader: { label: 'Reader', blurb: 'Stories to read in Cyrillic', href: '/reader' },
+  deck: { label: 'Deck', blurb: 'Browse, edit and add words', href: '/deck' },
 };
 
 /**
- * The order the rows are listed in: the four stages in path order, with the
- * deck slotted in before chat. The deck is a tool rather than a stage, and chat
- * is deliberately last — it is demoted until Разговор, at which point it is the
- * primary button and drops out of this list entirely.
+ * The order the rows are listed in: the stages in path order, with the deck
+ * last. The deck is a tool rather than a stage.
  */
-const ACTIVITY_ORDER: readonly ActivityKey[] = ['trainer', 'review', 'reader', 'deck', 'chat'];
+const ACTIVITY_ORDER: readonly ActivityKey[] = ['trainer', 'review', 'reader', 'deck'];
 
-/** The activity each stage's primary button points at. */
+/**
+ * The activity each stage's primary button points at.
+ *
+ * Books points at the reader for now: it is the closest thing that exists, and
+ * a button that goes nowhere is worse than one that goes somewhere useful. The
+ * books screen replaces this entry when it lands.
+ */
 const STAGE_ACTIVITY: Record<Stage, ActivityKey> = {
-  azbuka: 'trainer',
-  reci: 'review',
-  citanje: 'reader',
-  razgovor: 'chat',
+  alphabet: 'trainer',
+  words: 'review',
+  reading: 'reader',
+  books: 'reader',
 };
 
-/** Stage names are only ever shown in Cyrillic; `nextGoal` carries the English. */
+/** The stage names, as §3 of the phase-3 spec names them. */
 const STAGE_NAME: Record<Stage, string> = {
-  azbuka: 'Азбука',
-  reci: 'Речи',
-  citanje: 'Читање',
-  razgovor: 'Разговор',
+  alphabet: 'Alphabet',
+  words: 'Words',
+  reading: 'Reading',
+  books: 'Books',
 };
 
 export default function DashboardScreen() {
@@ -88,23 +96,14 @@ export default function DashboardScreen() {
     : 0;
 
   const stage = progress.data?.stage;
-  /** What the stage wants next... */
+  /** Where the stage's one big button goes. */
   const primaryKey = stage ? STAGE_ACTIVITY[stage] : null;
-  /**
-   * ...and where the button can actually go, which is not always the same: a
-   * stage whose screen has not been built yet falls back to reviews, which are
-   * useful at every stage.
-   */
-  const buttonKey: ActivityKey | null =
-    primaryKey === null ? null : ACTIVITIES[primaryKey].href ? primaryKey : 'review';
 
-  // Anything the top of the screen already covers is not repeated as a row.
-  // Reviews are always covered by the habit card, and so is the stage's own
-  // activity when the button really goes there — but a fallen-back button does
-  // not cover it, so an unbuilt Читање keeps a СКОРО row of its own rather than
-  // vanishing at exactly the stage it belongs to.
+  // Anything the top of the screen already covers is not repeated as a row:
+  // reviews are always covered by the habit card, and the stage's own activity
+  // by its primary button.
   const promoted = new Set<ActivityKey>(['review']);
-  if (buttonKey) promoted.add(buttonKey);
+  if (primaryKey) promoted.add(primaryKey);
   const rows = ACTIVITY_ORDER.filter((key) => !promoted.has(key));
 
   return (
@@ -127,31 +126,18 @@ export default function DashboardScreen() {
             showing one, and two of them for one screen is a fidget. */}
         {progress.isError ? (
           <ErrorCard
-            message={
-              progress.error instanceof Error
-                ? progress.error.message
-                : 'Could not work out which stage you are on.'
-            }
+            message={errorMessage(progress.error, 'Could not work out which stage you are on.')}
             onRetry={() => void progress.refetch()}
           />
-        ) : progress.data && stage && primaryKey && buttonKey ? (
-          <StageHeader
-            stage={stage}
-            goal={progress.data.nextGoal}
-            primaryKey={primaryKey}
-            buttonKey={buttonKey}
-          />
+        ) : progress.data && stage && primaryKey ? (
+          <StageHeader stage={stage} goal={progress.data.nextGoal} primaryKey={primaryKey} />
         ) : null}
 
         {dashboard.isPending ? (
           <ActivityIndicator color={colors.primary} style={styles.loading} />
         ) : dashboard.isError ? (
           <ErrorCard
-            message={
-              dashboard.error instanceof Error
-                ? dashboard.error.message
-                : 'Could not load your progress.'
-            }
+            message={errorMessage(dashboard.error, 'Could not load your progress.')}
             onRetry={() => void dashboard.refetch()}
           />
         ) : (
@@ -189,16 +175,13 @@ function StageHeader({
   stage,
   goal,
   primaryKey,
-  buttonKey,
 }: {
   stage: Stage;
   goal: string;
   primaryKey: ActivityKey;
-  buttonKey: ActivityKey;
 }) {
   const router = useRouter();
-  const activity = ACTIVITIES[buttonKey];
-  const fellBack = buttonKey !== primaryKey;
+  const activity = ACTIVITIES[primaryKey];
 
   return (
     <View style={styles.stageCard} testID="stage-card">
@@ -213,23 +196,13 @@ function StageHeader({
       <Pressable
         style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={activity.en}
+        accessibilityLabel={activity.label}
         testID="stage-primary"
-        onPress={() => {
-          // Non-null for every key the button can carry: the fallback is only
-          // ever picked because the stage's own screen has no href yet.
-          if (activity.href) router.push(activity.href);
-        }}
+        onPress={() => router.push(activity.href)}
       >
-        <Text style={styles.primaryButtonCyr}>{activity.cyr}</Text>
-        <Text style={styles.primaryButtonEn}>{activity.en}</Text>
+        <Text style={styles.primaryButtonLabel}>{activity.label}</Text>
+        <Text style={styles.primaryButtonBlurb}>{activity.blurb}</Text>
       </Pressable>
-
-      {fellBack ? (
-        <Text style={styles.stageFallback} testID="stage-fallback">
-          {ACTIVITIES[primaryKey].cyr} is not built yet — keep the words coming in the meantime.
-        </Text>
-      ) : null}
     </View>
   );
 }
@@ -256,7 +229,7 @@ function ReviewCard({
     <Pressable
       style={({ pressed }) => [styles.reviewCard, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={ACTIVITIES.review.en}
+      accessibilityLabel={ACTIVITIES.review.label}
       testID="review-card"
       onPress={() => router.push('/review')}
     >
@@ -278,8 +251,8 @@ function ReviewCard({
       </View>
       <View style={styles.reviewFooter}>
         <View style={styles.activityText}>
-          <Text style={styles.activityCyr}>{ACTIVITIES.review.cyr}</Text>
-          <Text style={styles.activityEn}>{ACTIVITIES.review.en}</Text>
+          <Text style={styles.activityLabel}>{ACTIVITIES.review.label}</Text>
+          <Text style={styles.activityBlurb}>{ACTIVITIES.review.blurb}</Text>
         </View>
         <Text style={styles.chevron}>›</Text>
       </View>
@@ -317,28 +290,20 @@ function ActivityButton({
   activity: Activity;
 }) {
   const router = useRouter();
-  const enabled = activity.href !== null;
 
   return (
     <Pressable
-      style={({ pressed }) => [
-        styles.activity,
-        !enabled && styles.activityDisabled,
-        pressed && enabled && styles.activityPressed,
-      ]}
-      disabled={!enabled}
+      style={({ pressed }) => [styles.activity, pressed && styles.activityPressed]}
       accessibilityRole="button"
-      accessibilityLabel={activity.en}
+      accessibilityLabel={activity.label}
       testID={`activity-${activityKey}`}
-      onPress={() => {
-        if (activity.href) router.push(activity.href);
-      }}
+      onPress={() => router.push(activity.href)}
     >
       <View style={styles.activityText}>
-        <Text style={[styles.activityCyr, !enabled && styles.mutedText]}>{activity.cyr}</Text>
-        <Text style={styles.activityEn}>{activity.en}</Text>
+        <Text style={styles.activityLabel}>{activity.label}</Text>
+        <Text style={styles.activityBlurb}>{activity.blurb}</Text>
       </View>
-      {enabled ? <Text style={styles.chevron}>›</Text> : <Text style={styles.soon}>СКОРО</Text>}
+      <Text style={styles.chevron}>›</Text>
     </Pressable>
   );
 }
@@ -374,7 +339,6 @@ const styles = StyleSheet.create({
   stageLabel: { fontSize: 12, color: colors.textMuted, textTransform: 'uppercase' },
   stageName: { fontSize: 34, fontWeight: '700', color: colors.primary },
   stageGoal: { fontSize: 15, color: colors.text, marginBottom: spacing.sm },
-  stageFallback: { fontSize: 12, color: colors.textMuted, textAlign: 'center' },
   primaryButton: {
     minHeight: touchTarget + 8,
     alignItems: 'center',
@@ -383,8 +347,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     paddingVertical: spacing.sm,
   },
-  primaryButtonCyr: { color: colors.primaryOn, fontSize: 22, fontWeight: '700' },
-  primaryButtonEn: { color: colors.primaryOn, fontSize: 13, opacity: 0.85 },
+  primaryButtonLabel: { color: colors.primaryOn, fontSize: 22, fontWeight: '700' },
+  primaryButtonBlurb: { color: colors.primaryOn, fontSize: 13, opacity: 0.85 },
   pressed: { opacity: 0.8 },
   reviewCard: {
     backgroundColor: colors.surface,
@@ -432,14 +396,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  activityDisabled: { backgroundColor: colors.background, opacity: 0.7 },
   activityPressed: { opacity: 0.8 },
-  activityText: { gap: 2 },
-  activityCyr: { fontSize: 22, fontWeight: '600', color: colors.text },
-  activityEn: { fontSize: 13, color: colors.textMuted },
-  mutedText: { color: colors.textMuted },
+  activityText: { flexShrink: 1, gap: 2 },
+  activityLabel: { fontSize: 20, fontWeight: '600', color: colors.text },
+  activityBlurb: { fontSize: 13, color: colors.textMuted },
   chevron: { fontSize: 28, color: colors.primary },
-  soon: { fontSize: 12, color: colors.textMuted, textTransform: 'uppercase' },
   errorCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,

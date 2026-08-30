@@ -21,7 +21,7 @@ import {
 } from 'react-native';
 
 import { api, type DashboardStats, type QueueEntry } from '@/lib/api';
-import { audioSupported, playText } from '@/lib/audio';
+import { audioSupported, playAudioPath } from '@/lib/audio';
 import { confirmAction } from '@/lib/confirm';
 import { errorMessage } from '@/lib/errors';
 import { formatInterval } from '@/lib/format';
@@ -178,7 +178,7 @@ export default function ReviewScreen() {
       // Inactive while this screen is up, so this marks it stale rather than
       // refetching -- the dashboard reloads when the user goes back to it.
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      // A card graduating to 'review' is a word learnt, which moves the Речи
+      // A card graduating to 'review' is a word learnt, which moves the Words
       // goal and can move the stage itself.
       void queryClient.invalidateQueries({ queryKey: ['progress'] });
     },
@@ -417,19 +417,10 @@ export default function ReviewScreen() {
 
           <View style={styles.speakRow}>
             <SpeakButton
-              text={entry.card.sr_cyr}
-              label="word"
+              path={entry.card.audio_path}
               enabled={ttsEnabled}
               testID="speak-word"
             />
-            {revealed ? (
-              <SpeakButton
-                text={entry.card.example_cyr}
-                label="example"
-                enabled={ttsEnabled}
-                testID="speak-example"
-              />
-            ) : null}
           </View>
         </View>
 
@@ -488,42 +479,44 @@ function GradeButtons({
 }
 
 /**
- * Speaker button. It removes itself as soon as it learns there is no audio —
- * no TTS key on the server, an unsupported platform, or a browser that refused
- * to play — rather than sitting there doing nothing when pressed.
+ * Speaker button for a card's recorded clip.
+ *
+ * It renders nothing at all when the card has no `audio_path` — clips are
+ * generated offline in batches, so a word that has not been through one simply
+ * has no button rather than a button that does nothing. It also removes itself
+ * if playback turns out to be impossible (unsupported platform, or a browser
+ * that refused).
  */
 function SpeakButton({
-  text,
-  label,
+  path,
   enabled,
   testID,
 }: {
-  text: string;
-  /** What the clip is ("word" / "example"), so two speakers are tellable apart. */
-  label: string;
+  /** `cards.audio_path`; null for a card with no clip yet. */
+  path: string | null;
   enabled: boolean;
   testID: string;
 }) {
   const [state, setState] = useState<'idle' | 'busy' | 'unavailable'>('idle');
 
-  // A new card means a new sentence to try; forget a previous failure.
-  useEffect(() => setState('idle'), [text]);
+  // A new card means a new clip to try; forget a previous failure.
+  useEffect(() => setState('idle'), [path]);
 
-  if (!enabled || !audioSupported() || state === 'unavailable') return null;
+  if (!path || !enabled || !audioSupported() || state === 'unavailable') return null;
 
   return (
     <Pressable
       style={({ pressed }) => [styles.speak, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={`Play ${text}`}
+      accessibilityLabel="Play the pronunciation"
       testID={testID}
       onPress={() => {
         setState('busy');
-        void playText(text).then((played) => setState(played ? 'idle' : 'unavailable'));
+        void playAudioPath(path).then((played) => setState(played ? 'idle' : 'unavailable'));
       }}
     >
       <Text style={styles.speakIcon}>{state === 'busy' ? '…' : '🔊'}</Text>
-      <Text style={styles.speakLabel}>{label}</Text>
+      <Text style={styles.speakLabel}>listen</Text>
     </Pressable>
   );
 }
@@ -549,7 +542,7 @@ function Summary({
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <View style={styles.content} testID="summary">
-        <Text style={styles.summaryTitle}>{total === 0 ? 'Nothing to study' : 'Браво!'}</Text>
+        <Text style={styles.summaryTitle}>{total === 0 ? 'Nothing to study' : 'Well done!'}</Text>
         <Text style={styles.summarySubtitle} testID="summary-total">
           {total === 0
             ? 'No cards are due right now. Come back later, or add new words to the deck.'

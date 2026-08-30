@@ -41,7 +41,7 @@ export default function Root({ children }: PropsWithChildren) {
         */}
         <meta
           name="description"
-          content="Serbian for the family: Cyrillic-first flashcards, an AI tutor and a script trainer."
+          content="Serbian for the family: Cyrillic-first flashcards, a script trainer and stories to read."
         />
         <meta name="theme-color" content={THEME_COLOR} />
 
@@ -52,7 +52,7 @@ export default function Root({ children }: PropsWithChildren) {
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="Вуковица" />
+        <meta name="apple-mobile-web-app-title" content="Vukovica" />
 
         {/* Expo: keeps the body from scrolling so the app's own scroll views own it. */}
         <ScrollViewStyleReset />

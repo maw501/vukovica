@@ -34,7 +34,7 @@ export default function AppLayout() {
         <Stack.Screen
           name="index"
           options={{
-            title: 'Вуковица',
+            title: 'Vukovica',
             headerRight: () => (
               <Link href="/settings" style={styles.headerLink} testID="header-settings">
                 <Text style={styles.headerLinkText}>Settings</Text>
@@ -43,13 +43,13 @@ export default function AppLayout() {
           }}
         />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-        <Stack.Screen name="review" options={{ title: 'Учи' }} />
-        <Stack.Screen name="deck" options={{ title: 'Шпил' }} />
-        <Stack.Screen name="trainer" options={{ title: 'Ћирилица' }} />
-        <Stack.Screen name="reader" options={{ title: 'Читање' }} />
-        {/* Title is set by the screen itself, to the story's own Cyrillic one. */}
-        <Stack.Screen name="story/[id]" options={{ title: 'Прича' }} />
-        <Stack.Screen name="chat" options={{ title: 'Разговор' }} />
+        <Stack.Screen name="review" options={{ title: 'Review' }} />
+        <Stack.Screen name="deck" options={{ title: 'Deck' }} />
+        <Stack.Screen name="trainer" options={{ title: 'Cyrillic trainer' }} />
+        <Stack.Screen name="reader" options={{ title: 'Reader' }} />
+        {/* Title is set by the screen itself, to the story's own Cyrillic one --
+            that title is the content, not chrome. */}
+        <Stack.Screen name="story/[id]" options={{ title: 'Story' }} />
       </Stack>
     </>
   );

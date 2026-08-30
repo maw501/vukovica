@@ -1,21 +1,18 @@
 /**
  * Typed helpers over supabase-js. This is the whole data layer: every call here
  * is a direct PostgREST request made as the signed-in user, protected by RLS.
- *
- * Later tasks extend this file (queue, reviews, deck CRUD, drills, chat).
+ * There is no server of our own left to call — phase 3 deleted the Edge
+ * Functions, so PostgREST and storage are the only two things this talks to.
  */
 
-import { parseGeneratedCard, trimCardInput, type CardInput } from '@/lib/cardInput';
-import { formatLearnerState, LEARNER_STATE_WORDS, type LapsedCard } from '@/lib/chat';
+import { trimCardInput, type CardInput } from '@/lib/cardInput';
 import {
   BUMP_DRILL_STATS_FN,
   bumpDrillStatsParams,
   type LetterDelta,
 } from '@/lib/drills';
-import { callEdgeFunction } from '@/lib/edge';
 import { gradeCard, newUserCard, type ReviewGrade } from '@/lib/fsrs';
 import { buildQueue } from '@/lib/queue';
-import { parseGloss, type Gloss, type StoryLevel } from '@/lib/reader';
 import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
 import { computeProgress, type Progress } from '@/lib/stages';
 import {
@@ -27,8 +24,6 @@ import {
 import { supabase } from '@/lib/supabase';
 import type {
   CardRow,
-  ChatMessageRow,
-  ChatRole,
   DrillStatRow,
   SettingsRow,
   StoryRow,
@@ -521,15 +516,6 @@ async function recordDrillAttempts(deltas: readonly LetterDelta[]): Promise<Dril
   return (data ?? []) as DrillStatRow[];
 }
 
-/**
- * Ask the `generate` Edge Function to draft a card for `input` (either script).
- * The result is shown in an editable preview, never saved straight through.
- */
-async function generateCard(input: string): Promise<CardInput> {
-  const body = await callEdgeFunction<unknown>('generate', { mode: 'new_card', input });
-  return parseGeneratedCard(body);
-}
-
 // ---------------------------------------------------------------------------
 // Progression
 // ---------------------------------------------------------------------------
@@ -563,7 +549,7 @@ export function isMissingStoriesTable(error: { code?: string; message?: string }
 }
 
 /**
- * Stories the user has finished — the Читање ladder's numerator.
+ * Stories the user has finished — the Reading ladder's numerator.
  *
  * Defensive on purpose: the `stories` table is created by the graded-reader
  * task later in this phase, so until that migration lands this query fails with
@@ -586,14 +572,18 @@ async function countStoriesFinished(userId: string): Promise<number> {
 /**
  * Where the learner is on the staged path, in one batch of reads.
  *
- * The three inputs are independent, so they go out together; `computeProgress`
+ * The four inputs are independent, so they go out together; `computeProgress`
  * turns them into the stage and goal without any further I/O. `listDrillStats`
  * reaches for the session again, which is a local read, not a round trip.
+ *
+ * The books count needs none of `countStoriesFinished`'s defensiveness: `books`
+ * ships in the same migration as everything else phase 3 reads, so a failure
+ * here is a real failure and says so.
  */
 async function getProgress(): Promise<Progress> {
   const userId = await requireUserId();
 
-  const [drillStats, known, storiesRead] = await Promise.all([
+  const [drillStats, known, storiesRead, booksFinished] = await Promise.all([
     listDrillStats(),
     // "Known" is a word that has graduated out of learning: `state = 'review'`.
     // 'relearning' is deliberately excluded — a lapsed word is one he no longer
@@ -605,10 +595,22 @@ async function getProgress(): Promise<Progress> {
       .eq('user_id', userId)
       .eq('state', 'review'),
     countStoriesFinished(userId),
+    supabase
+      .from('books')
+      .select('*', { count: 'exact', head: true })
+      // Redundant under RLS, but it keeps this a user-scoped index lookup.
+      .eq('user_id', userId)
+      .not('finished_at', 'is', null),
   ]);
   if (known.error) throw known.error;
+  if (booksFinished.error) throw booksFinished.error;
 
-  return computeProgress({ drillStats, knownWords: known.count ?? 0, storiesRead });
+  return computeProgress({
+    drillStats,
+    knownWords: known.count ?? 0,
+    storiesRead,
+    booksFinished: booksFinished.count ?? 0,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -636,29 +638,7 @@ async function listStories(): Promise<StoryRow[]> {
 }
 
 /**
- * Ask the `story` Edge Function for a new story.
- *
- * The function inserts the row itself with the service role (the client has no
- * business writing a story it did not generate), so this is one round trip and
- * the response *is* the saved row — minus `user_id`, which is always the caller.
- */
-async function createStory(level: StoryLevel, topic?: string): Promise<Omit<StoryRow, 'user_id'>> {
-  const trimmed = topic?.trim();
-  // Sent only when there is one: the function treats a blank topic as no topic,
-  // and this keeps the wire body honest about what was asked for.
-  const body = trimmed ? { level, topic: trimmed } : { level };
-  const story = await callEdgeFunction<Omit<StoryRow, 'user_id'>>('story', body);
-
-  // The caller navigates straight to `story.id`, so a response that is not a
-  // row would strand the reader on an empty screen rather than fail loudly.
-  if (!story || typeof story.id !== 'string' || typeof story.body_cyr !== 'string') {
-    throw new Error('The story was generated but came back unreadable. Pull to refresh.');
-  }
-  return story;
-}
-
-/**
- * Mark a story read. The Читање ladder counts exactly this column.
+ * Mark a story read. The Reading ladder counts exactly this column.
  *
  * Unconditional by design: the reading view only offers the button on a story
  * whose `finished_at` is null, and re-stamping the date on one that is already
@@ -673,17 +653,6 @@ async function finishStory(id: string, now: Date = new Date()): Promise<StoryRow
     .single<StoryRow>();
   if (error) throw error;
   return data;
-}
-
-/**
- * Explain one tapped word in its sentence, via `generate` mode `gloss`.
- *
- * Two different 502s can come back and they mean opposite things to the user —
- * see `describeGlossError`, which is the only place that wording lives.
- */
-async function glossWord(word: string, sentence: string): Promise<Gloss> {
-  const body = await callEdgeFunction<unknown>('generate', { mode: 'gloss', word, sentence });
-  return parseGloss(body);
 }
 
 /**
@@ -711,111 +680,6 @@ async function findCardByWord(word: string): Promise<CardRow | null> {
   return (data ?? []).find((card) => card.sr_cyr.trim().toLowerCase() === lowered) ?? null;
 }
 
-// ---------------------------------------------------------------------------
-// Tutor chat
-// ---------------------------------------------------------------------------
-
-/** How much history the chat screen loads. Context sent is a subset (Task 10). */
-export const CHAT_HISTORY_LIMIT = 50;
-
-/**
- * The most recent messages, oldest first.
- *
- * Read newest-first and reversed, because "the last 50" is what a chat screen
- * wants and PostgREST has no `offset from the end`. Ordered by `created_at`
- * (the indexed column) with `id` breaking ties: two messages written inside the
- * same clock tick would otherwise come back in an arbitrary order, and a
- * question after its answer reads as nonsense.
- */
-async function listChatMessages(limit: number = CHAT_HISTORY_LIMIT): Promise<ChatMessageRow[]> {
-  const userId = await requireUserId();
-  const { data, error } = await supabase
-    .from('chat_messages')
-    .select('*')
-    // Redundant under RLS, but it is what lets the planner use
-    // `chat_messages_user_created_idx`.
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
-    .order('id', { ascending: false })
-    .limit(limit)
-    .returns<ChatMessageRow[]>();
-  if (error) throw error;
-  return (data ?? []).reverse();
-}
-
-/**
- * Append one message to the history and return the saved row.
- *
- * The user's message is written *before* the stream starts, so a failed reply
- * leaves what he typed on screen and in the database rather than losing it. The
- * assistant's is written after the stream completes, with the DODAJ lines still
- * in it — the raw text is what the tutor said, and the chips are re-derived at
- * render, so the convention can change without rewriting history.
- */
-async function appendChatMessage(role: ChatRole, content: string): Promise<ChatMessageRow> {
-  const userId = await requireUserId();
-  const { data, error } = await supabase
-    .from('chat_messages')
-    .insert({ user_id: userId, role, content })
-    .select()
-    .single<ChatMessageRow>();
-  if (error) throw error;
-  return data;
-}
-
-/** A `user_cards` row with just enough of its card to name the word. */
-interface LapsedJoinRow {
-  lapses: number | null;
-  cards: Pick<CardRow, 'sr_cyr' | 'en'> | Pick<CardRow, 'sr_cyr' | 'en'>[] | null;
-}
-
-/**
- * The learner-state block appended to the tutor's system prompt: the dashboard
- * figures plus the handful of cards that keep coming back.
- *
- * Best effort by design. It is context, not content — if either query fails the
- * conversation should still happen, just without the personalisation, so the
- * caller gets `undefined` rather than an exception.
- */
-async function getLearnerState(now: Date = new Date()): Promise<string | undefined> {
-  try {
-    const userId = await requireUserId();
-    const [stats, lapsedResult] = await Promise.all([
-      getDashboard(now),
-      supabase
-        .from('user_cards')
-        .select('lapses, cards(sr_cyr, en)')
-        .eq('user_id', userId)
-        .gt('lapses', 0)
-        .order('lapses', { ascending: false })
-        .limit(LEARNER_STATE_WORDS)
-        .returns<LapsedJoinRow[]>(),
-    ]);
-    if (lapsedResult.error) throw lapsedResult.error;
-
-    const lapsed: LapsedCard[] = [];
-    for (const row of lapsedResult.data ?? []) {
-      const card = Array.isArray(row.cards) ? row.cards[0] : row.cards;
-      if (!card) continue; // Should be unreachable: the FK guarantees a card.
-      lapsed.push({ sr_cyr: card.sr_cyr, en: card.en, lapses: row.lapses ?? 0 });
-    }
-
-    return formatLearnerState({ stats, lapsed });
-  } catch (error) {
-    console.warn('[chat] learner state unavailable', error);
-    return undefined;
-  }
-}
-
-/** The signed-in user's access token, for the streaming `tutor` call. */
-async function getAccessToken(): Promise<string> {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
-  const token = data.session?.access_token;
-  if (!token) throw new Error('Not signed in.');
-  return token;
-}
-
 export const api = {
   getSettings,
   updateSettings,
@@ -826,17 +690,10 @@ export const api = {
   addCard,
   updateCard,
   deleteCard,
-  generateCard,
   listDrillStats,
   recordDrillAttempts,
   getProgress,
   listStories,
-  createStory,
   finishStory,
-  glossWord,
   findCardByWord,
-  listChatMessages,
-  appendChatMessage,
-  getLearnerState,
-  getAccessToken,
 };

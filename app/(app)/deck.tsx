@@ -1,6 +1,6 @@
 /**
  * The deck: browse and search every card, edit or delete one, and add a new
- * word by asking the model to draft it.
+ * word by hand.
  *
  * One screen with three views rather than three routes — the list's scroll
  * position and search text survive a trip into a card and back, which is what
@@ -29,7 +29,6 @@ import { CardForm } from '@/components/CardForm';
 import { api } from '@/lib/api';
 import { EMPTY_CARD_INPUT, toCyrillicHeadword, type CardInput } from '@/lib/cardInput';
 import { confirmAction } from '@/lib/confirm';
-import { describeEdgeError } from '@/lib/edge';
 import { errorMessage } from '@/lib/errors';
 import { filterCards } from '@/lib/search';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
@@ -73,7 +72,7 @@ export default function DeckScreen() {
   const refreshDeck = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['cards'] });
     void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-    // A deleted card can take a known word with it, which moves the Речи goal.
+    // A deleted card can take a known word with it, which moves the Words goal.
     void queryClient.invalidateQueries({ queryKey: ['progress'] });
     void queryClient.invalidateQueries({ queryKey: ['queue'] });
   }, [queryClient]);
@@ -196,6 +195,14 @@ export default function DeckScreen() {
 // Add a word
 // ---------------------------------------------------------------------------
 
+/**
+ * Adding a word, in two steps: the headword first, then the rest of the card.
+ *
+ * The first step exists for the transliteration alone — `toCyrillicHeadword`
+ * turns "kasika" into "кашика", so a beginner who cannot yet type Cyrillic can
+ * still add a word, and `sr_cyr` stays Cyrillic (which the whole app assumes).
+ * A word already typed in Cyrillic passes straight through.
+ */
 function AddCard({
   onCancel,
   onSaved,
@@ -206,20 +213,21 @@ function AddCard({
   const [word, setWord] = useState('');
   const [draft, setDraft] = useState<CardInput | null>(null);
 
-  const generate = useMutation({
-    mutationFn: (input: string) => api.generateCard(input),
-    onSuccess: (card) => setDraft(card),
-  });
-
   const save = useMutation({
     mutationFn: (input: CardInput) => api.addCard(input),
     onSuccess: onSaved,
   });
 
+  const start = () => {
+    const headword = toCyrillicHeadword(word);
+    if (!headword) return;
+    setDraft({ ...EMPTY_CARD_INPUT, sr_cyr: headword });
+  };
+
   if (draft) {
     return (
       <CardForm
-        title="Check the card"
+        title="New card"
         value={draft}
         onChange={setDraft}
         onCancel={() => setDraft(null)}
@@ -237,8 +245,8 @@ function AddCard({
       <View style={styles.content}>
         <Text style={styles.formTitle}>Add a word</Text>
         <Text style={styles.muted}>
-          Type it in either script. The tutor drafts the card and you can edit it before it is
-          saved.
+          Type it in either script — Latin is converted to Cyrillic for you. You fill in the rest
+          of the card on the next screen.
         </Text>
 
         <TextInput
@@ -249,41 +257,28 @@ function AddCard({
           placeholderTextColor={colors.textMuted}
           autoCapitalize="none"
           autoCorrect={false}
-          onSubmitEditing={() => word.trim() && generate.mutate(word.trim())}
+          onSubmitEditing={start}
           testID="add-input"
         />
+        {word.trim() ? (
+          <Text style={styles.muted} testID="add-headword">
+            Cyrillic: {toCyrillicHeadword(word)}
+          </Text>
+        ) : null}
 
         <Pressable
           style={({ pressed }) => [
             styles.primaryButton,
-            (!word.trim() || generate.isPending) && styles.buttonDisabled,
+            !word.trim() && styles.buttonDisabled,
             pressed && styles.pressed,
           ]}
-          disabled={!word.trim() || generate.isPending}
-          onPress={() => generate.mutate(word.trim())}
+          disabled={!word.trim()}
+          onPress={start}
           accessibilityRole="button"
-          testID="add-generate"
+          testID="add-continue"
         >
-          <Text style={styles.primaryButtonText}>
-            {generate.isPending ? 'Drafting…' : 'Draft the card'}
-          </Text>
+          <Text style={styles.primaryButtonText}>Fill in the card</Text>
         </Pressable>
-
-        {generate.isError ? (
-          <View style={styles.errorCard} testID="add-error">
-            <Text style={styles.error}>{describeEdgeError(generate.error)}</Text>
-            <Pressable
-              style={styles.textButton}
-              onPress={() =>
-                setDraft({ ...EMPTY_CARD_INPUT, sr_cyr: toCyrillicHeadword(word) })
-              }
-              accessibilityRole="button"
-              testID="add-manual"
-            >
-              <Text style={styles.textButtonLabel}>Fill the card in by hand</Text>
-            </Pressable>
-          </View>
-        ) : null}
 
         <Pressable style={styles.textButton} onPress={onCancel} accessibilityRole="button">
           <Text style={styles.textButtonLabel}>Cancel</Text>
@@ -438,14 +433,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: colors.primaryOn, fontSize: 17, fontWeight: '600' },
   buttonDisabled: { backgroundColor: colors.disabled },
-  errorCard: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.danger,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: spacing.xs,
-  },
   error: { color: colors.danger, fontSize: 14 },
   muted: { color: colors.textMuted, fontSize: 14 },
   textButton: { minHeight: touchTarget, alignItems: 'center', justifyContent: 'center' },
