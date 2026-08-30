@@ -73,6 +73,8 @@ export default function DeckScreen() {
   const refreshDeck = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['cards'] });
     void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    // A deleted card can take a known word with it, which moves the Речи goal.
+    void queryClient.invalidateQueries({ queryKey: ['progress'] });
     void queryClient.invalidateQueries({ queryKey: ['queue'] });
   }, [queryClient]);
 

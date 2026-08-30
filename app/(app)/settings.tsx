@@ -64,6 +64,10 @@ export default function SettingsScreen() {
       void queryClient.invalidateQueries({ queryKey: ['settings'] });
       // The new-card budget feeds the dashboard's "new today" figure.
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      // Nothing in settings moves the stage today, but the rule the dashboard
+      // is refreshed by is "anything it shows changed" -- keeping both of its
+      // reads together is what stops the two halves drifting apart later.
+      void queryClient.invalidateQueries({ queryKey: ['progress'] });
     },
   });
 

@@ -41,6 +41,7 @@ import {
   type LetterResult,
 } from '@/lib/drills';
 import { errorMessage } from '@/lib/errors';
+import { LETTER_TOTAL, masteredLetters } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import { cyrToLat } from '@/lib/transliterate';
 import type { CardRow, DrillStatRow } from '@/lib/types';
@@ -90,6 +91,11 @@ export default function TrainerScreen() {
   const inputRef = useRef<TextInput>(null);
   /** Writes run one after another, so two words never race for a letter's row. */
   const saveChain = useRef<Promise<unknown>>(Promise.resolve());
+  /**
+   * The letters already mastered when this round started, so the summary can
+   * tell a letter mastered *here* from one mastered weeks ago.
+   */
+  const masteredAtRoundStart = useRef<ReadonlySet<string>>(new Set());
 
   const startRound = useCallback(() => {
     setRound(null);
@@ -106,6 +112,7 @@ export default function TrainerScreen() {
     if (round !== null) return;
     if (!cards.data || !stats.data) return;
     if (cards.isFetching || stats.isFetching) return;
+    masteredAtRoundStart.current = masteredLetters(stats.data);
     setRound(pickDrillWords(cards.data, stats.data, ROUND_SIZE));
   }, [cards.data, cards.isFetching, round, stats.data, stats.isFetching]);
 
@@ -127,6 +134,10 @@ export default function TrainerScreen() {
       queryClient.setQueryData<DrillStatRow[]>(['drill-stats'], (current) =>
         mergeDrillStats(current ?? [], rows),
       );
+      // Letters mastered here move the dashboard's stage and goal. The
+      // dashboard is inactive while this screen is up, so this marks its
+      // progress stale rather than refetching -- it reloads on the way back.
+      void queryClient.invalidateQueries({ queryKey: ['progress'] });
     },
   });
 
@@ -183,6 +194,15 @@ export default function TrainerScreen() {
   }, [router]);
 
   const roundDeltas = useMemo(() => tallyAttempts(results), [results]);
+
+  /**
+   * The alphabet mastered so far, from the same `drill-stats` cache the round is
+   * built from. Every answer merges its new totals into that cache, so the count
+   * climbs as the round is played rather than only on the next visit — and the
+   * rule for what counts as mastered stays in `lib/stages.ts`, where the
+   * dashboard reads it from too.
+   */
+  const mastered = useMemo(() => masteredLetters(stats.data ?? []), [stats.data]);
 
   // Errors first: a failed query never produces data, so `round` would stay
   // null and a loading check ahead of this one would spin for ever.
@@ -255,6 +275,21 @@ export default function TrainerScreen() {
     </View>
   );
 
+  // The whole point of the trainer, in one line: how much of Vuk's alphabet is
+  // in hand. Rendered on the drill and on the summary alike.
+  const masteryBar = (
+    <View style={styles.mastery} testID="letter-mastery">
+      <Text style={styles.masteryLabel}>
+        Савладано {mastered.size}/{LETTER_TOTAL}
+      </Text>
+      <View style={styles.masteryTrack}>
+        <View
+          style={[styles.masteryFill, { width: `${(mastered.size / LETTER_TOTAL) * 100}%` }]}
+        />
+      </View>
+    </View>
+  );
+
   const banner =
     unsaved.length > 0 ? (
       <View style={styles.banner} testID="save-error">
@@ -277,6 +312,14 @@ export default function TrainerScreen() {
             {right} / {results.length}
           </Text>
           <Text style={styles.summarySubtitle}>words spelled exactly right</Text>
+
+          {masteryBar}
+
+          <MasteredLetters
+            deltas={roundDeltas}
+            mastered={mastered}
+            before={masteredAtRoundStart.current}
+          />
 
           <WeakLetters deltas={roundDeltas} />
 
@@ -311,6 +354,8 @@ export default function TrainerScreen() {
     <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
       <View style={styles.content}>
         {modeSwitch}
+
+        {masteryBar}
 
         <Text style={styles.progress} testID="drill-progress">
           {index + 1} of {round.length}
@@ -406,6 +451,49 @@ export default function TrainerScreen() {
         )}
       </View>
     </ScrollView>
+  );
+}
+
+/**
+ * Which of the letters just drilled are mastered — the round measured against
+ * the goal of the Азбука stage rather than against itself.
+ *
+ * Only letters this round actually touched are listed: the rest of the alphabet
+ * is the header's business. A letter that crossed the bar *during* the round is
+ * called out, because that is the moment worth noticing.
+ */
+function MasteredLetters({
+  deltas,
+  mastered,
+  before,
+}: {
+  deltas: LetterDelta[];
+  mastered: ReadonlySet<string>;
+  before: ReadonlySet<string>;
+}) {
+  const letters = deltas.map((delta) => delta.letter).filter((letter) => mastered.has(letter));
+
+  return (
+    <View style={styles.weakCard} testID="drill-mastered">
+      <Text style={styles.weakTitle}>Mastered letters</Text>
+      {letters.length === 0 ? (
+        <Text style={styles.weakEmpty}>
+          No letter from this round is mastered yet — each needs 8 tries at 90%.
+        </Text>
+      ) : (
+        <View style={styles.weakRow}>
+          {letters.map((letter) => {
+            const isNew = !before.has(letter);
+            return (
+              <View key={letter} style={styles.masteredLetter} testID={`mastered-${letter}`}>
+                <Text style={styles.masteredLetterCyr}>{letter}</Text>
+                <Text style={styles.masteredLetterMark}>{isNew ? 'ново' : '✓'}</Text>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
   );
 }
 
@@ -604,6 +692,26 @@ const styles = StyleSheet.create({
   },
   weakLetterCyr: { fontSize: 26, fontWeight: '700', color: colors.accent },
   weakLetterCount: { fontSize: 12, color: colors.textMuted },
+  masteredLetter: {
+    minWidth: touchTarget,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.sm,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+  },
+  masteredLetterCyr: { fontSize: 26, fontWeight: '700', color: colors.primary },
+  masteredLetterMark: { fontSize: 12, color: colors.textMuted },
+  mastery: { gap: spacing.xs },
+  masteryLabel: { fontSize: 15, fontWeight: '600', color: colors.text, textAlign: 'center' },
+  masteryTrack: {
+    height: 6,
+    borderRadius: radius.sm,
+    backgroundColor: colors.disabled,
+    overflow: 'hidden',
+  },
+  masteryFill: { height: 6, borderRadius: radius.sm, backgroundColor: colors.primary },
   error: { color: colors.danger, fontSize: 14, textAlign: 'center' },
   textButton: { minHeight: touchTarget, alignItems: 'center', justifyContent: 'center' },
   textButtonLabel: { color: colors.primary, fontSize: 16, fontWeight: '600' },

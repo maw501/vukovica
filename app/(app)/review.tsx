@@ -178,6 +178,9 @@ export default function ReviewScreen() {
       // Inactive while this screen is up, so this marks it stale rather than
       // refetching -- the dashboard reloads when the user goes back to it.
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      // A card graduating to 'review' is a word learnt, which moves the Речи
+      // goal and can move the stage itself.
+      void queryClient.invalidateQueries({ queryKey: ['progress'] });
     },
   });
 

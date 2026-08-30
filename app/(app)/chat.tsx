@@ -206,6 +206,7 @@ export default function ChatScreen() {
           // Both dashboard counts move when the deck grows.
           void queryClient.invalidateQueries({ queryKey: ['cards'] });
           void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+          void queryClient.invalidateQueries({ queryKey: ['progress'] });
           void queryClient.invalidateQueries({ queryKey: ['queue'] });
           setAdding(null);
         }}
