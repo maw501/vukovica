@@ -182,13 +182,22 @@ The Edge Functions are optional for the review flow and the trainer, which talk
 only to Postgres. The tutor, the AI add-word helper and audio need
 `npm run functions` running *and* a valid API key.
 
+When you are done, `npx supabase stop` shuts the containers down. Data survives
+that, so the next `npm run dev` picks up where you left off; `npx supabase stop
+--no-backup` throws the database away instead.
+
 ## Tests and checks
 
 ```sh
 npm test                  # vitest, single run (275 tests)
 npm run typecheck         # tsc --noEmit
-npm run build:web         # static export into dist/
+npm run build:web         # static export into dist/, with the bundler cache cleared
 ```
+
+`build:web` passes `--clear` deliberately. Metro's cache does not notice an
+`EXPO_PUBLIC_*` change, so without it a rebuild after an env edit silently
+reuses the old bundle — which matters most in exactly the situation where you
+would least notice, building for production.
 
 The test suite is deliberately pure: transliteration round-trips, the FSRS
 wrapper, queue and session selection, drill selection, chat parsing, seed-deck

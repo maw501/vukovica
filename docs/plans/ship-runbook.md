@@ -122,10 +122,12 @@ curl -s -X POST https://<project-ref>.supabase.co/functions/v1/tts \
 the JavaScript at build time, so the bundle you upload is permanently stamped
 with whatever the bundler saw. Two traps:
 
-1. **Metro's cache does not notice an environment change.** Run `expo export`
-   twice with different `EXPO_PUBLIC_*` values and the second run happily
-   reuses the first bundle — silently, with no warning. It looks exactly like
-   Expo "ignoring" your new values. Always build production with `--clear`.
+1. **Metro's cache does not notice an environment change.** Run a bare
+   `expo export` twice with different `EXPO_PUBLIC_*` values and the second run
+   happily reuses the first bundle — silently, with no warning. It looks exactly
+   like Expo "ignoring" your new values. This one is disarmed for you:
+   `npm run build:web` passes `--clear`, so use the script rather than calling
+   `expo export` by hand.
 2. **Every `.env*` file Expo can find contributes, and `.env.local` outranks
    `.env`.** `.env.local` is loaded in production builds too, so a leftover
    local `EXPO_PUBLIC_SUPABASE_URL` is baked in over the top of the one you
@@ -150,9 +152,13 @@ Create account button once, to register. See step 6.
 ```sh
 mv .env.local .env.local.dev            # keep local values out of this build
 rm -rf dist
-npx expo export --platform web --output-dir dist --clear
+npm run build:web                       # carries --clear
 mv .env.local.dev .env.local
 ```
+
+If the export dies part-way through, put `.env.local.dev` back first, before
+debugging anything else — the last line never ran, and a missing `.env.local`
+turns every later local command into a confusing failure of its own.
 
 Now prove the bundle points where you think it does, before uploading it:
 
@@ -161,8 +167,8 @@ grep -ro '<project-ref>\.supabase\.co' dist/_expo | head -1     # expect a hit
 grep -ro '127\.0\.0\.1:54321' dist/_expo | head -1              # expect nothing
 ```
 
-If the second grep finds something, the cache trap got you. Delete `dist`, run
-the export again with `--clear`, and re-check.
+If the second grep finds something, your `.env` and `.env.local` are not saying
+what you think. Delete `dist`, check both files, and build again.
 
 ## 4. Vercel
 
@@ -217,8 +223,8 @@ single-user.
    EXPO_PUBLIC_ALLOW_SIGNUP=false
    ```
 
-   then repeat step 3's build (with `--clear`) and step 4's deploy. Confirm on
-   the live site that the **Create one** button is gone.
+   then repeat step 3's build and step 4's deploy. Confirm on the live site that
+   the **Create one** button is gone.
 
 4. **Review works.** Start a session, reveal a card, grade it, reload the page.
    The queue should pick up where you left off and the dashboard streak should
@@ -259,9 +265,9 @@ single-user.
 ```sh
 npx supabase db push                          # if migrations changed
 npx supabase functions deploy --no-verify-jwt # if functions changed
-rm -rf dist && npx expo export --platform web --output-dir dist --clear
+mv .env.local .env.local.dev && rm -rf dist && npm run build:web; mv .env.local.dev .env.local
 npx vercel deploy --prod dist
 ```
 
-Always `--clear`, always check the grep in step 3. It is the only trap in here
-that fails silently.
+Always check the grep in step 3 before uploading. Env values baked into the
+wrong bundle is the only failure in here that is silent.
