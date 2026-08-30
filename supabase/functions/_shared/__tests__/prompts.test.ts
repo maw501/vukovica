@@ -7,7 +7,9 @@ import { describe, expect, it } from 'vitest';
 import {
   TUTOR_SYSTEM,
   buildExamplePrompt,
+  buildGlossPrompt,
   buildNewCardPrompt,
+  buildStoryPrompt,
   buildTutorSystem,
   CARD_DOMAINS,
 } from '../prompts';
@@ -143,6 +145,116 @@ describe('buildNewCardPrompt', () => {
 
   it('accepts either an English word or a Serbian one', () => {
     expect(buildNewCardPrompt('пелена')).toContain('пелена');
+  });
+});
+
+/**
+ * The story prompt IS the graded reader. Every assertion here is a product
+ * promise: Ekavian Cyrillic a beginner can actually decode, at a difficulty
+ * pinned to his level, built out of words he already owns. The level bands are
+ * asserted both ways round — each level carries its own band and *not* another
+ * level's — because a copy-paste slip between bands would otherwise hand a
+ * level-1 learner a 250-word story and no test would notice.
+ */
+describe('buildStoryPrompt', () => {
+  const KNOWN = ['мама', 'тата', 'беба', 'кућа', 'мачка'];
+
+  it('mandates Ekavian and says so literally', () => {
+    const prompt = buildStoryPrompt(1, KNOWN);
+    expect(prompt).toContain('Ekavian');
+    expect(prompt).toMatch(/Ijekavian/);
+  });
+
+  it('demands Cyrillic-only output in both fields', () => {
+    const prompt = buildStoryPrompt(2, KNOWN);
+    expect(prompt).toMatch(/Cyrillic only|only Cyrillic/i);
+    expect(prompt).toMatch(/no Latin/i);
+    expect(prompt).toMatch(/title_cyr/);
+    expect(prompt).toMatch(/body_cyr/);
+  });
+
+  it("asks for a children's-story register", () => {
+    const prompt = buildStoryPrompt(1, KNOWN);
+    expect(prompt).toMatch(/children's stor/i);
+  });
+
+  it('gives level 1 its own band and no other level\'s', () => {
+    const prompt = buildStoryPrompt(1, KNOWN);
+    expect(prompt).toContain('40 to 80');
+    expect(prompt).toContain('6 words');
+    expect(prompt).not.toContain('80 to 150');
+    expect(prompt).not.toContain('150 to 250');
+  });
+
+  it('gives level 2 its own band and no other level\'s', () => {
+    const prompt = buildStoryPrompt(2, KNOWN);
+    expect(prompt).toContain('80 to 150');
+    expect(prompt).toContain('9 words');
+    expect(prompt).not.toContain('40 to 80');
+    expect(prompt).not.toContain('150 to 250');
+  });
+
+  it('gives level 3 its own band and no other level\'s', () => {
+    const prompt = buildStoryPrompt(3, KNOWN);
+    expect(prompt).toContain('150 to 250');
+    expect(prompt).not.toContain('40 to 80');
+    expect(prompt).not.toContain('80 to 150');
+  });
+
+  it('constrains tense at level 1 only', () => {
+    expect(buildStoryPrompt(1, KNOWN)).toMatch(/present tense/i);
+    expect(buildStoryPrompt(3, KNOWN)).not.toMatch(/present tense/i);
+  });
+
+  it('passes the known words through with the ~10% new-vocabulary cap', () => {
+    const prompt = buildStoryPrompt(1, KNOWN);
+    for (const word of KNOWN) expect(prompt).toContain(word);
+    // The cap is what keeps a "graded" reader graded.
+    expect(prompt).toMatch(/10%/);
+    expect(prompt).toMatch(/new (?:vocabulary|words)/i);
+  });
+
+  it('still produces a usable prompt when the learner knows no words yet', () => {
+    const prompt = buildStoryPrompt(1, []);
+    expect(prompt).toContain('40 to 80');
+    expect(prompt).toContain('Ekavian');
+    // No dangling "known words:" header with nothing under it.
+    expect(prompt).not.toMatch(/known words:\s*$/im);
+  });
+
+  it('passes an explicit topic through and falls back to home topics without one', () => {
+    expect(buildStoryPrompt(1, KNOWN, 'a cat at the market')).toContain('a cat at the market');
+    const untopiced = buildStoryPrompt(1, KNOWN);
+    expect(untopiced).toMatch(/family/i);
+    expect(untopiced).toMatch(/home/i);
+    expect(untopiced).toMatch(/animals/i);
+  });
+
+  it('ignores a blank topic rather than asking for a story about nothing', () => {
+    expect(buildStoryPrompt(1, KNOWN, '   ')).toBe(buildStoryPrompt(1, KNOWN));
+  });
+});
+
+describe('buildGlossPrompt', () => {
+  it('embeds the tapped word and the sentence it was tapped in', () => {
+    const prompt = buildGlossPrompt('мачку', 'Видим мачку у башти.');
+    expect(prompt).toContain('мачку');
+    expect(prompt).toContain('Видим мачку у башти.');
+  });
+
+  it('asks for the dictionary form in Cyrillic only', () => {
+    const prompt = buildGlossPrompt('мачку', 'Видим мачку у башти.');
+    expect(prompt).toMatch(/dictionary form/i);
+    expect(prompt).toMatch(/base_form_cyr/);
+    expect(prompt).toMatch(/Cyrillic only|only Cyrillic/i);
+    expect(prompt).toMatch(/no Latin/i);
+    expect(prompt).toContain('Ekavian');
+  });
+
+  it('caps the grammar note at one short line', () => {
+    const prompt = buildGlossPrompt('мачку', 'Видим мачку у башти.');
+    expect(prompt).toMatch(/\bnote\b/);
+    expect(prompt).toMatch(/one (?:short )?(?:line|sentence)/i);
   });
 });
 

@@ -108,3 +108,95 @@ Fields:
 - example_en: the natural English translation of example_cyr.
 - domain: exactly one of ${CARD_DOMAINS.join(', ')}.`;
 }
+
+/** The three reader levels. */
+export type StoryLevel = 1 | 2 | 3;
+
+/**
+ * The graded reader's difficulty ladder, spec §3.2. Each band is stated once,
+ * here, and only the matching band ever reaches the model — a level-1 reader
+ * must not even see the level-3 length, or the model will average the two.
+ */
+const STORY_BANDS: Record<StoryLevel, string> = {
+  1: `- The story body must be 40 to 80 words long.
+- No sentence longer than 6 words.
+- Present tense throughout.`,
+  2: `- The story body must be 80 to 150 words long.
+- No sentence longer than 9 words.`,
+  3: `- The story body must be 150 to 250 words long.
+- Sentence length and tense are up to you; keep them natural for a child.`,
+};
+
+/**
+ * Prompt for the `story` function: one graded children's story.
+ *
+ * `knownWordsSample` is a sample of the words this learner has actually
+ * graduated (user_cards.state = 'review'). Building the story out of them is
+ * what makes the reader graded rather than merely short, and the ~10% cap is
+ * what stops a "story at your level" from being a wall of new vocabulary.
+ */
+export function buildStoryPrompt(
+  level: StoryLevel,
+  knownWordsSample: string[],
+  topic?: string,
+): string {
+  const wanted = topic?.trim();
+  const subject = wanted
+    ? `- Write it about this: ${wanted}`
+    : `- Pick an everyday subject from family, home or animals: the baby, meals, the kitchen, the garden, a cat or a dog, visiting grandma, going to the shop.`;
+
+  const known = knownWordsSample.map((word) => word.trim()).filter(Boolean);
+  const vocabulary = known.length
+    ? `- Build the story mostly out of the words this learner already knows, listed below.
+- Introduce at most about 10% new vocabulary — roughly one new word in every ten.
+- Known words: ${known.join(', ')}`
+    : `- This learner has not graduated any words yet, so use only the most common everyday Serbian a beginner meets first: family, home, animals, eating, sleeping, going.`;
+
+  return `Write one very short children's story in Serbian for an English-speaking adult beginner who is learning to read Cyrillic.
+
+Register:
+- The voice of a picture book read aloud to a small child: simple, warm, concrete, one thing happening at a time.
+- Give it a beginning, a small middle and a gentle ending. Nothing frightening, nothing sad.
+${subject}
+
+Script and dialect:
+- Ekavian standard (Belgrade Serbian), never Ijekavian ("лепо" not "лијепо", "млеко" not "млијеко").
+- title_cyr and body_cyr must be Cyrillic only — no Latin letters anywhere, in any word.
+- No translation, no transliteration, no English, no emoji anywhere in the output.
+- Spell any numbers out as Serbian words; do not use digits.
+
+Level ${level} of 3:
+${STORY_BANDS[level]}
+
+Vocabulary:
+${vocabulary}
+
+Return:
+- title_cyr: a short title, a few words, Cyrillic only, no full stop.
+- body_cyr: the story itself, Cyrillic only. Separate paragraphs with a blank line. Do not repeat the title in it.`;
+}
+
+/**
+ * Prompt for `generate` mode `gloss`: what one tapped word in a story means.
+ *
+ * The reader taps an inflected form, so the base form matters as much as the
+ * gloss — it is what the "у шпил" button seeds a new card with, and a card
+ * headed by an accusative is a card that teaches the wrong thing.
+ */
+export function buildGlossPrompt(word: string, sentence: string): string {
+  return `An English-speaking beginner reading a Serbian story tapped this word: ${word}
+
+It appeared in this sentence: ${sentence}
+
+Explain that word as it is used in that sentence.
+
+Rules:
+- Ekavian standard (Belgrade Serbian), never Ijekavian.
+- base_form_cyr must be Cyrillic only — no Latin letters.
+- Gloss the word as it is used here, not its most common meaning elsewhere.
+
+Return:
+- base_form_cyr: the dictionary form of the tapped word — nominative singular for nouns, infinitive for verbs, masculine nominative singular for adjectives.
+- en: the plainest English gloss, lowercase, no article, no parenthetical notes.
+- note: one short line of English saying what form the word is in this sentence and why, or how the word is used. One sentence, no more.`;
+}

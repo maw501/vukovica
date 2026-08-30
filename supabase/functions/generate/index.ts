@@ -4,13 +4,28 @@ import { z } from 'zod';
 
 import { getAuthenticatedUser, createServiceClient } from '../_shared/auth.ts';
 import { corsHeaders, errorResponse, jsonHeaders } from '../_shared/cors.ts';
-import { CARD_DOMAINS, buildExamplePrompt, buildNewCardPrompt } from '../_shared/prompts.ts';
+import { CYRILLIC_LINE } from '../_shared/cyrillic.ts';
+import {
+  CARD_DOMAINS,
+  buildExamplePrompt,
+  buildGlossPrompt,
+  buildNewCardPrompt,
+} from '../_shared/prompts.ts';
 import { MODEL_IDS, vuk } from '../_shared/provider.ts';
 import { extractUsage, logUsage } from '../_shared/usage.ts';
 
 const ExampleSchema = z.object({
   example_cyr: z.string(),
   example_en: z.string(),
+});
+
+// The reader's tap-to-gloss sheet. `base_form_cyr` seeds the new_card flow, so
+// a Latin-script or transliterated base form would head a card with the wrong
+// script entirely -- the regex makes that a rejected generation, not a bad card.
+const GlossSchema = z.object({
+  base_form_cyr: z.string().regex(CYRILLIC_LINE),
+  en: z.string(),
+  note: z.string(),
 });
 
 // Mirrors public.cards minus the server-owned columns (id, audio_path,
@@ -34,43 +49,66 @@ serve(async (req: Request) => {
   const user = await getAuthenticatedUser(req);
   if (!user) return errorResponse(401, 'unauthorized');
 
-  let body: { mode?: string; sr_cyr?: string; input?: string };
+  let body: { mode?: string; sr_cyr?: string; input?: string; word?: string; sentence?: string };
   try {
     body = await req.json();
   } catch {
     return errorResponse(400, 'invalid_json');
   }
 
-  const isExample = body.mode === 'example';
-  if (!isExample && body.mode !== 'new_card') {
+  const mode = body.mode;
+  if (mode !== 'example' && mode !== 'new_card' && mode !== 'gloss') {
     return errorResponse(400, 'invalid_mode');
   }
 
-  const subject = (isExample ? body.sr_cyr : body.input)?.trim();
-  if (!subject) {
-    return errorResponse(400, isExample ? 'sr_cyr_required' : 'input_required');
+  // Each mode's own required inputs. Trimmed here so an all-whitespace field is
+  // a 400 rather than a prompt asking about nothing.
+  let word = '';
+  let sentence = '';
+  let subject = '';
+  if (mode === 'gloss') {
+    word = body.word?.trim() ?? '';
+    if (!word) return errorResponse(400, 'word_required');
+    sentence = body.sentence?.trim() ?? '';
+    if (!sentence) return errorResponse(400, 'sentence_required');
+  } else {
+    subject = (mode === 'example' ? body.sr_cyr : body.input)?.trim() ?? '';
+    if (!subject) {
+      return errorResponse(400, mode === 'example' ? 'sr_cyr_required' : 'input_required');
+    }
   }
 
   const serviceClient = createServiceClient();
 
   try {
-    const result = isExample
-      ? await generateObject({
-          model: vuk('fast'),
-          schema: ExampleSchema,
-          prompt: buildExamplePrompt(subject),
-          maxTokens: 400,
-        })
-      : await generateObject({
-          model: vuk('fast'),
-          schema: CardSchema,
-          prompt: buildNewCardPrompt(subject),
-          maxTokens: 500,
-        });
+    // All three modes are one small structured generation on the fast model.
+    // Spelled out per mode rather than shared: the schema type is what makes
+    // `result.object` typed, and hoisting it out erases that.
+    const result =
+      mode === 'example'
+        ? await generateObject({
+            model: vuk('fast'),
+            schema: ExampleSchema,
+            prompt: buildExamplePrompt(subject),
+            maxTokens: 400,
+          })
+        : mode === 'new_card'
+          ? await generateObject({
+              model: vuk('fast'),
+              schema: CardSchema,
+              prompt: buildNewCardPrompt(subject),
+              maxTokens: 500,
+            })
+          : await generateObject({
+              model: vuk('fast'),
+              schema: GlossSchema,
+              prompt: buildGlossPrompt(word, sentence),
+              maxTokens: 400,
+            });
 
     logUsage(serviceClient, {
       userId: user.id,
-      surface: isExample ? 'example' : 'new_card',
+      surface: mode,
       model: MODEL_IDS.fast,
       usage: extractUsage(result),
     });

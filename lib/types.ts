@@ -89,6 +89,26 @@ export interface DrillStatRow {
   correct: number | null;
 }
 
+/**
+ * A row of `public.stories` — the graded reader's library.
+ *
+ * Mirrors `supabase/migrations/20260830140000_stories.sql`. The `story` Edge
+ * Function returns everything here except `user_id` (it is always the caller),
+ * i.e. `Omit<StoryRow, 'user_id'>`.
+ */
+export interface StoryRow {
+  id: string;
+  user_id: string;
+  title_cyr: string;
+  body_cyr: string;
+  /** 1-3; the difficulty band the story was generated at. */
+  level: number;
+  word_count: number;
+  created_at: string | null;
+  /** null = unread. Set when the reader taps "Завршио сам". */
+  finished_at: string | null;
+}
+
 /** A row of `public.settings` — one per user. */
 export interface SettingsRow {
   user_id: string;

@@ -38,7 +38,7 @@ export function extractUsage(result: AIUsageResult): UsageSnapshot {
   };
 }
 
-export type Surface = 'tutor' | 'example' | 'new_card';
+export type Surface = 'tutor' | 'example' | 'new_card' | 'gloss' | 'story';
 
 interface LogUsageInput {
   userId: string;

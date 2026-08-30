@@ -386,6 +386,10 @@ verify_jwt = false
 import_map = "./functions/deno.json"
 verify_jwt = false
 
+[functions.story]
+import_map = "./functions/deno.json"
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327
