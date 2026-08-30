@@ -1,8 +1,8 @@
 /**
  * Calling our Edge Functions.
  *
- * Everything else in the app talks to Postgres directly under RLS; these three
- * endpoints (`tutor`, `generate`, `tts`) exist only because they need a
+ * Everything else in the app talks to Postgres directly under RLS; these four
+ * endpoints (`tutor`, `generate`, `tts`, `story`) exist only because they need a
  * server-side AI key. They are plain `fetch` calls — supabase-js's
  * `functions.invoke` swallows the response body on a non-2xx, and the body is
  * exactly where our error code lives.

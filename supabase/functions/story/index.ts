@@ -101,7 +101,7 @@ serve(async (req: Request) => {
   if (body.topic !== undefined && typeof body.topic !== 'string') {
     return errorResponse(400, 'invalid_topic');
   }
-  const topic = typeof body.topic === 'string' ? body.topic.trim() : undefined;
+  const topic = typeof body.topic === 'string' ? body.topic.trim().slice(0, 200) : undefined;
 
   const serviceClient = createServiceClient();
   const knownWords = await fetchKnownWords(serviceClient, user.id);
@@ -113,7 +113,7 @@ serve(async (req: Request) => {
       model: vuk('chat'),
       schema: StorySchema,
       prompt: buildStoryPrompt(level, knownWords, topic),
-      maxTokens: 1500,
+      maxTokens: 2500,
     });
 
     logUsage(serviceClient, {
