@@ -28,8 +28,8 @@ import type { Stage } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import { DAILY_GOAL } from '@/lib/xp';
 
-/** The six places the dashboard can send the learner. */
-type ActivityKey = 'trainer' | 'letters' | 'review' | 'reader' | 'deck' | 'requests';
+/** The seven places the dashboard can send the learner. */
+type ActivityKey = 'trainer' | 'letters' | 'review' | 'grammar' | 'reader' | 'deck' | 'requests';
 
 interface Activity {
   /** English, like every other piece of chrome. */
@@ -53,6 +53,11 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
     href: '/review?deck=letters',
   },
   review: { label: 'Review', blurb: 'Today’s cards', href: '/review' },
+  grammar: {
+    label: 'Grammar',
+    blurb: 'Drill the endings of everyday phrases',
+    href: '/grammar',
+  },
   reader: { label: 'Reader', blurb: 'Stories to read in Cyrillic', href: '/reader' },
   deck: { label: 'Deck', blurb: 'Browse, edit and add words', href: '/deck' },
   requests: {
@@ -66,12 +71,14 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
  * The order the rows are listed in: the stages in path order, then the two
  * tools. Neither the deck nor the capture queue is a stage — they are what the
  * stages are worked with. Letters sits with the trainer, because both are the
- * alphabet.
+ * alphabet, and Grammar sits after Review, because conjugations are what the
+ * words are put to work in and it is read before it is read *with*.
  */
 const ACTIVITY_ORDER: readonly ActivityKey[] = [
   'trainer',
   'letters',
   'review',
+  'grammar',
   'reader',
   'deck',
   'requests',

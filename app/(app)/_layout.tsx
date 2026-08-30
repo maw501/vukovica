@@ -49,6 +49,10 @@ export default function AppLayout() {
         <Stack.Screen name="trainer" options={{ title: 'Cyrillic trainer' }} />
         <Stack.Screen name="reader" options={{ title: 'Reader' }} />
         <Stack.Screen name="requests" options={{ title: 'Requests' }} />
+        <Stack.Screen name="grammar" options={{ title: 'Grammar' }} />
+        {/* Title is set by the screen itself, to the topic's own name -- which
+            names the Serbian verb being conjugated, so it is content too. */}
+        <Stack.Screen name="grammar/[slug]" options={{ title: 'Grammar' }} />
         {/* Title is set by the screen itself, to the story's own Cyrillic one --
             that title is the content, not chrome. */}
         <Stack.Screen name="story/[id]" options={{ title: 'Story' }} />

@@ -12,6 +12,7 @@ import {
   type LetterDelta,
 } from '@/lib/drills';
 import { gradeCard, newUserCard, type ReviewGrade } from '@/lib/fsrs';
+import { BUMP_GRAMMAR_STATS_FN, bumpGrammarStatsParams } from '@/lib/grammar';
 import {
   buildQueue,
   cardsInDeck,
@@ -33,6 +34,9 @@ import { supabase } from '@/lib/supabase';
 import type {
   CardRow,
   DrillStatRow,
+  GrammarItemRow,
+  GrammarStatRow,
+  GrammarTopicRow,
   RequestRow,
   RequestSource,
   SettingsRow,
@@ -987,7 +991,10 @@ async function listRequests(): Promise<RequestEntry[]> {
     // Redundant under RLS, but it is what lets the planner use
     // `requests_user_created_idx`.
     .eq('user_id', userId)
-    .order('created_at', { ascending: false })
+    // `nullsFirst: false` because the column is nullable: Postgres sorts nulls
+    // first in a descending order, so a row whose `created_at` somehow ended up
+    // null would pin itself to the top of the queue for ever.
+    .order('created_at', { ascending: false, nullsFirst: false })
     // `created_at` defaults to now() and two requests filed in the same instant
     // would otherwise come back in an arbitrary order that changed per fetch.
     .order('id', { ascending: true })
@@ -1032,6 +1039,105 @@ async function createRequest({ text_en, source = 'typed' }: CreateRequestArgs): 
   return data;
 }
 
+// ---------------------------------------------------------------------------
+// Grammar
+// ---------------------------------------------------------------------------
+
+/**
+ * The user's accuracy on one topic, as the topic list shows it. Just the two
+ * counters — `topicAccuracy` in lib/grammar.ts turns them into a percentage.
+ */
+export type GrammarStat = Pick<GrammarStatRow, 'attempts' | 'correct'>;
+
+/** A topic row together with the signed-in user's accuracy on it, if any. */
+export interface GrammarTopicEntry extends GrammarTopicRow {
+  /** null until the topic has been drilled at least once. */
+  stat: GrammarStat | null;
+}
+
+/**
+ * The embed as PostgREST returns it. `grammar_stats` is a *child* of
+ * `grammar_topics` (many rows, one per user), so the embed is an array — of at
+ * most one element, because `grammar_stats_select_own` admits only the caller's
+ * own row. Typed for both shapes anyway, as `RequestJoinRow` is, so a schema
+ * change that made the relationship one-to-one could not fail silently.
+ */
+interface GrammarTopicJoinRow extends GrammarTopicRow {
+  stat: GrammarStat | GrammarStat[] | null;
+}
+
+function embeddedGrammarStat(row: GrammarTopicJoinRow): GrammarStat | null {
+  if (!row.stat) return null;
+  return Array.isArray(row.stat) ? (row.stat[0] ?? null) : row.stat;
+}
+
+/**
+ * Every grammar topic in teaching order, each with the user's accuracy on it.
+ *
+ * One read rather than a topic list plus a stats list: the embed is filtered by
+ * the same RLS policy that protects a direct read, so the counters that come
+ * back are the caller's own and nothing has to be stitched together on the
+ * client. Twelve rows today and no paging worry — this content is seeded, not
+ * user-generated — but `MAX_ROWS` keeps it honest if that ever changes.
+ *
+ * The topic screen reads this same list and finds its topic by slug, so opening
+ * a topic from here costs no round trip.
+ */
+async function listGrammarTopics(): Promise<GrammarTopicEntry[]> {
+  const { data, error } = await supabase
+    .from('grammar_topics')
+    // Aliased to `stat` because it is the user's one row, not the table.
+    .select('*, stat:grammar_stats(attempts, correct)')
+    .order('sort', { ascending: true })
+    .limit(MAX_ROWS)
+    .returns<GrammarTopicJoinRow[]>();
+  if (error) throw error;
+
+  return (data ?? []).map((row) => {
+    const { stat: _embedded, ...rest } = row;
+    return { ...rest, stat: embeddedGrammarStat(row) };
+  });
+}
+
+/**
+ * One topic's drill items, in teaching order. `pickRun` samples from these; the
+ * order they come back in is the order a run is asked in.
+ */
+async function listGrammarItems(topicId: string): Promise<GrammarItemRow[]> {
+  const { data, error } = await supabase
+    .from('grammar_items')
+    .select('*')
+    .eq('topic_id', topicId)
+    .order('sort', { ascending: true })
+    .limit(MAX_ROWS)
+    .returns<GrammarItemRow[]>();
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Add one finished run to a topic's counters.
+ *
+ * Through `bump_grammar_stats` rather than an upsert, for the reason
+ * `recordDrillAttempts` gives: PostgREST's upsert *replaces* the counts and this
+ * has to add to them. One request per run — not per item — so a run abandoned
+ * half way records nothing, which is the same bargain the trainer's XP makes.
+ */
+async function recordGrammarRun(
+  topicId: string,
+  attempts: number,
+  correct: number,
+): Promise<GrammarStatRow> {
+  const { data, error } = await supabase.rpc(
+    BUMP_GRAMMAR_STATS_FN,
+    bumpGrammarStatsParams(topicId, attempts, correct),
+  );
+  if (error) throw error;
+  // The project has no generated `Database` types, so an RPC's result type is
+  // whatever the caller says it is. The function returns one `grammar_stats` row.
+  return data as GrammarStatRow;
+}
+
 export const api = {
   getSettings,
   updateSettings,
@@ -1054,4 +1160,7 @@ export const api = {
   findCardByWord,
   listRequests,
   createRequest,
+  listGrammarTopics,
+  listGrammarItems,
+  recordGrammarRun,
 };

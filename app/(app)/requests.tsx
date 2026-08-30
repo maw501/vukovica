@@ -78,6 +78,9 @@ export default function RequestsScreen() {
             style={styles.input}
             value={text}
             onChangeText={setText}
+            // Frozen while the request is in flight: `onSuccess` clears the box,
+            // so anything typed mid-request would be wiped the moment it landed.
+            editable={!create.isPending}
             multiline
             autoCapitalize="sentences"
             autoCorrect
