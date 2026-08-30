@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeStreak } from '@/lib/streak';
+import { computeStreak, longestStreak } from '@/lib/streak';
 
 /**
  * A timestamp `n` local days before `now`, at a given local hour, serialized
@@ -106,5 +106,60 @@ describe('computeStreak', () => {
       localDaysAgo(now, 3), // 30 Aug
     ];
     expect(computeStreak(logs, now)).toBe(4);
+  });
+});
+
+describe('longestStreak', () => {
+  it('is 0 when there are no reviews at all', () => {
+    expect(longestStreak([])).toBe(0);
+  });
+
+  it('is 1 for a single day', () => {
+    expect(longestStreak([localDaysAgo(NOW, 3)])).toBe(1);
+  });
+
+  it('finds the best run even when it is long over', () => {
+    const logs = [
+      // A four-day run a fortnight ago...
+      localDaysAgo(NOW, 14),
+      localDaysAgo(NOW, 13),
+      localDaysAgo(NOW, 12),
+      localDaysAgo(NOW, 11),
+      // ...and a two-day one ending today.
+      localDaysAgo(NOW, 1),
+      localDaysAgo(NOW, 0),
+    ];
+    expect(longestStreak(logs)).toBe(4);
+    // The current streak is the shorter, live one -- the two answer different
+    // questions and the progress screen shows both.
+    expect(computeStreak(logs, NOW)).toBe(2);
+  });
+
+  it('is never shorter than the current streak', () => {
+    const logs = Array.from({ length: 7 }, (_, i) => localDaysAgo(NOW, i));
+    expect(longestStreak(logs)).toBe(7);
+    expect(computeStreak(logs, NOW)).toBe(7);
+  });
+
+  it('ignores order, duplicates, nulls and unparseable timestamps', () => {
+    const logs = [
+      localDaysAgo(NOW, 5),
+      null,
+      localDaysAgo(NOW, 4),
+      'not a date',
+      localDaysAgo(NOW, 5),
+      localDaysAgo(NOW, 6),
+    ];
+    expect(longestStreak(logs)).toBe(3);
+  });
+
+  it('spans a month boundary', () => {
+    const now = new Date(2026, 8, 2, 9, 0, 0, 0); // 2 Sep 2026
+    const logs = [
+      localDaysAgo(now, 1), // 1 Sep
+      localDaysAgo(now, 2), // 31 Aug
+      localDaysAgo(now, 3), // 30 Aug
+    ];
+    expect(longestStreak(logs)).toBe(3);
   });
 });

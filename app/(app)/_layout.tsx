@@ -43,6 +43,7 @@ export default function AppLayout() {
           }}
         />
         <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+        <Stack.Screen name="progress" options={{ title: 'Progress' }} />
         <Stack.Screen name="review" options={{ title: 'Review' }} />
         <Stack.Screen name="deck" options={{ title: 'Deck' }} />
         <Stack.Screen name="trainer" options={{ title: 'Cyrillic trainer' }} />

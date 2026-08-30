@@ -14,8 +14,11 @@
 /**
  * A stable key for the local calendar day an instant falls in. Not a date
  * format anyone reads -- it only ever gets compared to another key.
+ *
+ * Exported so `lib/xp.ts` can bucket today's XP by exactly the same rule the
+ * streak uses. Two definitions of "today" in one app is one too many.
  */
-function localDayKey(date: Date): string {
+export function localDayKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
@@ -75,6 +78,54 @@ export function streakFromLocalDays(days: ReadonlySet<string>, now: Date = new D
     cursor.setDate(cursor.getDate() - 1);
   }
   return streak;
+}
+
+/** The local calendar day a `localDayKey` names, or null if it is not one. */
+function dayFromKey(key: string): Date | null {
+  const parts = key.split('-').map(Number);
+  if (parts.length !== 3 || !parts.every((part) => Number.isInteger(part))) return null;
+  const [year, month, day] = parts;
+  return new Date(year, month, day);
+}
+
+/**
+ * The longest unbroken run of local days in `days`, anywhere in the history —
+ * the record the progress screen shows beside the current streak.
+ *
+ * Unlike `streakFromLocalDays` this cannot stop early: a run from two years ago
+ * may still be the longest, so it needs the whole set. That is why the progress
+ * screen walks the full review history and the dashboard does not.
+ */
+export function longestStreakFromLocalDays(days: ReadonlySet<string>): number {
+  const dates = [...days]
+    .map(dayFromKey)
+    .filter((date): date is Date => date !== null)
+    .sort((a, b) => a.getTime() - b.getTime());
+
+  let longest = 0;
+  let run = 0;
+  let previous: Date | null = null;
+  for (const date of dates) {
+    if (previous === null) {
+      run = 1;
+    } else {
+      // `setDate` rather than +86_400_000 ms, for the same reason as above: DST
+      // shifts and month ends.
+      const next = new Date(previous);
+      next.setDate(next.getDate() + 1);
+      run = localDayKey(next) === localDayKey(date) ? run + 1 : 1;
+    }
+    if (run > longest) longest = run;
+    previous = date;
+  }
+  return longest;
+}
+
+/** `longestStreakFromLocalDays` over raw `reviewed_at` values. */
+export function longestStreak(
+  timestamps: readonly (string | null | undefined)[],
+): number {
+  return longestStreakFromLocalDays(collectLocalDays(timestamps));
 }
 
 /** The start of the local calendar day containing `now`. */

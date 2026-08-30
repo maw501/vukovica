@@ -25,6 +25,7 @@ import { computeProgress, type Progress } from '@/lib/stages';
 import {
   collectLocalDays,
   computeStreak,
+  longestStreakFromLocalDays,
   startOfLocalDay,
   streakFromLocalDays,
 } from '@/lib/streak';
@@ -35,7 +36,9 @@ import type {
   SettingsRow,
   StoryRow,
   UserCardRow,
+  XpKind,
 } from '@/lib/types';
+import { levelFor, todayXp, XP_AWARDS, type XpAmountAt } from '@/lib/xp';
 
 // `settings.new_per_day` is nullable in the row type (a `select` can return
 // null for it), so every consumer needs a default. One definition, here.
@@ -139,37 +142,58 @@ export interface DashboardStats extends DeckStats {
 const STREAK_PAGE_SIZE = 1000;
 const STREAK_MAX_PAGES = 10;
 
+/** One page of `reviewed_at` values, newest first. */
+async function fetchReviewedAtPage(userId: string, page: number): Promise<(string | null)[]> {
+  const from = page * STREAK_PAGE_SIZE;
+  const { data, error } = await supabase
+    .from('review_logs')
+    .select('reviewed_at')
+    // Redundant under RLS, but it is what lets the planner use
+    // `review_logs_user_reviewed_idx`.
+    .eq('user_id', userId)
+    .order('reviewed_at', { ascending: false })
+    .range(from, from + STREAK_PAGE_SIZE - 1);
+  if (error) throw error;
+  return (data ?? []).map((row) => row.reviewed_at as string | null);
+}
+
 async function fetchStreakDays(userId: string, now: Date): Promise<number> {
   const days = new Set<string>();
   let streak = 0;
 
   for (let page = 0; page < STREAK_MAX_PAGES; page += 1) {
-    const from = page * STREAK_PAGE_SIZE;
-    const { data, error } = await supabase
-      .from('review_logs')
-      .select('reviewed_at')
-      // Redundant under RLS, but it is what lets the planner use
-      // `review_logs_user_reviewed_idx`.
-      .eq('user_id', userId)
-      .order('reviewed_at', { ascending: false })
-      .range(from, from + STREAK_PAGE_SIZE - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
+    const reviewedAt = await fetchReviewedAtPage(userId, page);
+    if (reviewedAt.length === 0) break;
 
-    collectLocalDays(
-      data.map((row) => row.reviewed_at),
-      days,
-    );
+    collectLocalDays(reviewedAt, days);
     streak = streakFromLocalDays(days, now);
 
     // Fewer rows than asked for means we have the full history.
-    if (data.length < STREAK_PAGE_SIZE) break;
+    if (reviewedAt.length < STREAK_PAGE_SIZE) break;
     // If some fetched day is *not* part of the streak, the gap that ends the
     // streak is already inside this window and older rows cannot extend it.
     if (days.size > streak) break;
   }
 
   return streak;
+}
+
+/**
+ * Every local day the user has ever reviewed on.
+ *
+ * The whole history, with none of `fetchStreakDays`'s early exit: the *longest*
+ * streak can be anywhere in it, so there is no window that settles the answer.
+ * That is why only the progress screen — opened deliberately, not painted on
+ * every dashboard visit — asks for this.
+ */
+async function fetchAllReviewDays(userId: string): Promise<Set<string>> {
+  const days = new Set<string>();
+  for (let page = 0; page < STREAK_MAX_PAGES; page += 1) {
+    const reviewedAt = await fetchReviewedAtPage(userId, page);
+    collectLocalDays(reviewedAt, days);
+    if (reviewedAt.length < STREAK_PAGE_SIZE) break;
+  }
+  return days;
 }
 
 /**
@@ -183,9 +207,11 @@ async function fetchStreakDays(userId: string, now: Date): Promise<number> {
  * dashboard's "new today" figure and `getQueue`'s new-card budget both call it,
  * so the two can never drift apart.
  *
- * Scoped to one deck through an inner join on `cards`. `review_logs.card_id` is
- * `on delete cascade`, so a log always has a card and the join drops nothing
- * that the unfiltered count used to include.
+ * Scoped to one deck through an inner join on `cards`. The join drops nothing
+ * the unfiltered count used to include because `submit_review` always writes
+ * `card_id` — every log this app creates has a card. (The cascade on the FK is a
+ * separate guarantee: it stops a *deleted* card leaving a dangling reference,
+ * which is not the same thing as the column never being null.)
  */
 async function countNewDoneToday(userId: string, now: Date, deck: Deck): Promise<number> {
   const { count, error } = await supabase
@@ -696,6 +722,144 @@ async function getProgress(): Promise<Progress> {
 }
 
 // ---------------------------------------------------------------------------
+// XP
+// ---------------------------------------------------------------------------
+
+/**
+ * Record one piece of work in the XP ledger.
+ *
+ * A plain client insert, protected by `xp_events_insert_own` — there is no RPC
+ * to hang it off, because the two writes that *do* have one (`submit_review`,
+ * `bump_drill_stats`) are the ones whose halves must not come apart. XP is not
+ * like that: it is a garnish on work that is already saved, so an award that
+ * fails costs its own points and nothing else. Callers award after the real
+ * write has landed, and swallow the failure.
+ *
+ * `amount` defaults to the kind's tariff and is only ever passed explicitly by a
+ * caller with a reason to differ. A non-positive award writes no row at all: a
+ * zero-XP event is a row that means nothing, and `book_page` and `request` are
+ * worth exactly nothing (see `XP_AWARDS`).
+ */
+async function awardXp(kind: XpKind, amount: number = XP_AWARDS[kind]): Promise<void> {
+  if (!Number.isFinite(amount) || amount <= 0) return;
+  const userId = await requireUserId();
+  const { error } = await supabase
+    .from('xp_events')
+    // `user_id` is not decoration: the `xp_events_insert_own` policy checks it.
+    .insert({ user_id: userId, amount: Math.round(amount), kind });
+  if (error) throw error;
+}
+
+/** The three numbers the dashboard ring and the progress screen show. */
+export interface XpSummary {
+  /** Lifetime XP: the sum of the whole ledger. */
+  total: number;
+  /** 1 + floor(total / 150). */
+  level: number;
+  /** XP earned on the device's local day, the ring's numerator. */
+  today: number;
+}
+
+/**
+ * PostgREST caps a response at `max_rows` (1000), and aggregate functions are
+ * off (`PGRST123` locally and on a default-configured hosted project), so the
+ * lifetime total is summed client-side a page at a time.
+ *
+ * 20 pages is twenty thousand events — years of daily study at a couple of
+ * dozen awards a day. Past that the total would quietly stop growing, so if this
+ * app is ever still in use at that point the fix is a `sum(amount)` in Postgres
+ * (an RPC, like `submit_review`), not a bigger number here.
+ */
+const XP_PAGE_SIZE = 1000;
+const XP_MAX_PAGES = 20;
+
+async function fetchXpTotal(userId: string): Promise<number> {
+  let total = 0;
+  for (let page = 0; page < XP_MAX_PAGES; page += 1) {
+    const from = page * XP_PAGE_SIZE;
+    const { data, error } = await supabase
+      .from('xp_events')
+      .select('amount')
+      // Redundant under RLS, but it is what lets the planner use
+      // `xp_events_user_created_idx`.
+      .eq('user_id', userId)
+      .range(from, from + XP_PAGE_SIZE - 1)
+      .returns<{ amount: number | null }[]>();
+    if (error) throw error;
+    const rows = data ?? [];
+    for (const row of rows) total += row.amount ?? 0;
+    if (rows.length < XP_PAGE_SIZE) break;
+  }
+  return total;
+}
+
+/**
+ * Lifetime XP, the level it buys, and today's ring.
+ *
+ * Today's events are fetched separately rather than sliced out of the total's
+ * pages: the day boundary is built exactly as `countNewDoneToday` builds it, so
+ * one bounded read answers it however long the ledger has grown. `todayXp` then
+ * re-checks the local day, which is what keeps a future-dated row (a clock that
+ * has run backwards) out of a ring that is meant to mean *today*.
+ */
+async function getXpSummary(now: Date = new Date()): Promise<XpSummary> {
+  const userId = await requireUserId();
+
+  const [total, todayRows] = await Promise.all([
+    fetchXpTotal(userId),
+    supabase
+      .from('xp_events')
+      .select('amount, created_at')
+      .eq('user_id', userId)
+      .gte('created_at', startOfLocalDay(now).toISOString())
+      .limit(MAX_ROWS)
+      .returns<XpAmountAt[]>(),
+  ]);
+  if (todayRows.error) throw todayRows.error;
+
+  return { total, level: levelFor(total), today: todayXp(todayRows.data ?? [], now) };
+}
+
+/**
+ * The progress screen's own numbers — the ones no other screen needs.
+ *
+ * Everything else it shows already has a query: `getProgress` for the ladders
+ * and letter mastery, `getXpSummary` for XP. This adds the two that do not: the
+ * streak record, and how many capture requests have been answered.
+ */
+export interface ProgressReport {
+  /** Consecutive local days ending today or yesterday. Same figure as the dashboard's. */
+  streakDays: number;
+  /** The best run in the whole history, which may be long over. */
+  longestStreakDays: number;
+  /** `requests` rows that have been fulfilled with a card. */
+  requestsFulfilled: number;
+}
+
+async function getProgressReport(now: Date = new Date()): Promise<ProgressReport> {
+  const userId = await requireUserId();
+
+  const [days, fulfilled] = await Promise.all([
+    fetchAllReviewDays(userId),
+    supabase
+      .from('requests')
+      .select('*', { count: 'exact', head: true })
+      // Redundant under RLS, but it keeps this a user-scoped index lookup.
+      .eq('user_id', userId)
+      .eq('status', 'done'),
+  ]);
+  if (fulfilled.error) throw fulfilled.error;
+
+  // Both streaks off the one day set: fetching the history twice to answer two
+  // questions about it would be a round trip for arithmetic.
+  return {
+    streakDays: streakFromLocalDays(days, now),
+    longestStreakDays: longestStreakFromLocalDays(days),
+    requestsFulfilled: fulfilled.count ?? 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Graded reader
 // ---------------------------------------------------------------------------
 
@@ -745,6 +909,11 @@ async function finishStory(id: string, now: Date = new Date()): Promise<StoryRow
  * PostgREST, and although `tokenize` can only ever hand this letters and
  * hyphens, a near-miss card silently shown as "the word you tapped" would be a
  * quiet lie rather than a visible bug.
+ *
+ * Words only, by construction. A letter card's `sr_cyr` is a pair ("Б б"), which
+ * no tapped token can equal today — but partitioning the lookup here means a
+ * later change to how letter cards are stored cannot turn a tap in a story into
+ * a flashcard for a letter.
  */
 async function findCardByWord(word: string): Promise<CardRow | null> {
   const needle = word.trim();
@@ -753,6 +922,7 @@ async function findCardByWord(word: string): Promise<CardRow | null> {
   const { data, error } = await supabase
     .from('cards')
     .select('*')
+    .eq('kind', deckKind('words'))
     .ilike('sr_cyr', needle)
     .limit(5)
     .returns<CardRow[]>();
@@ -776,6 +946,9 @@ export const api = {
   listDrillStats,
   recordDrillAttempts,
   getProgress,
+  awardXp,
+  getXpSummary,
+  getProgressReport,
   listStories,
   finishStory,
   findCardByWord,

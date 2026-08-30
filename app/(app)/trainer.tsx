@@ -92,6 +92,12 @@ export default function TrainerScreen() {
   /** Writes run one after another, so two words never race for a letter's row. */
   const saveChain = useRef<Promise<unknown>>(Promise.resolve());
   /**
+   * Whether the round on screen has already been paid its XP. A round earns its
+   * ten points once, when it is finished — not per word, and not again each time
+   * the summary re-renders.
+   */
+  const roundAwarded = useRef(false);
+  /**
    * The letters already mastered when this round started, so the summary can
    * tell a letter mastered *here* from one mastered weeks ago.
    */
@@ -103,6 +109,7 @@ export default function TrainerScreen() {
     setTyped('');
     setMarked(null);
     setResults([]);
+    roundAwarded.current = false;
   }, []);
 
   // Build a round as soon as the deck and the stats are both in hand, and never
@@ -140,6 +147,27 @@ export default function TrainerScreen() {
       void queryClient.invalidateQueries({ queryKey: ['progress'] });
     },
   });
+
+  /**
+   * The round's XP, awarded the moment the last word is answered — i.e. when
+   * `index` has walked off the end of the round.
+   *
+   * A round abandoned half way earns nothing, which is the point: the tariff is
+   * for a round, and the letter counts every answered word wrote are the reward
+   * for the words themselves. The ref is set before the request goes out, so
+   * neither a re-render nor StrictMode's double effect can pay twice; a failed
+   * insert simply loses the ten points, exactly as it does in a review.
+   */
+  useEffect(() => {
+    if (roundAwarded.current) return;
+    if (round === null || round.length === 0) return;
+    if (index < round.length) return;
+    roundAwarded.current = true;
+    void api
+      .awardXp('drill')
+      .then(() => queryClient.invalidateQueries({ queryKey: ['xp'] }))
+      .catch(() => undefined);
+  }, [index, queryClient, round]);
 
   const retryUnsaved = useCallback(() => {
     // Read and clear, then fire: mutating inside the state updater would run

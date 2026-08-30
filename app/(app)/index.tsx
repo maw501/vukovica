@@ -20,11 +20,13 @@ import {
   View,
 } from 'react-native';
 
+import { XpRing } from '@/components/XpRing';
 import { api, DEFAULT_NEW_PER_DAY } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { deckAllowance } from '@/lib/queue';
 import type { Stage } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
+import { DAILY_GOAL } from '@/lib/xp';
 
 /** The five places the dashboard can send the learner. */
 type ActivityKey = 'trainer' | 'letters' | 'review' | 'reader' | 'deck';
@@ -110,6 +112,10 @@ export default function DashboardScreen() {
     queryKey: ['deck-stats', 'letters'],
     queryFn: () => api.getDeckStats('letters'),
   });
+  // Today's ring and the level. Its own query, shared verbatim with the
+  // progress screen, so opening that screen re-uses this entry rather than
+  // asking again.
+  const xp = useQuery({ queryKey: ['xp'], queryFn: () => api.getXpSummary() });
 
   const stats = dashboard.data;
   const newPerDay = settings.data?.new_per_day ?? DEFAULT_NEW_PER_DAY;
@@ -153,6 +159,7 @@ export default function DashboardScreen() {
             void settings.refetch();
             void progress.refetch();
             void letters.refetch();
+            void xp.refetch();
           }}
           tintColor={colors.primary}
         />
@@ -160,14 +167,21 @@ export default function DashboardScreen() {
     >
       <View style={styles.content}>
         {/* No spinner of its own while it loads: the card below is already
-            showing one, and two of them for one screen is a fidget. */}
+            showing one, and two of them for one screen is a fidget. The header
+            renders whatever it has -- the streak and the ring do not wait on
+            the stage, and the stage failing must not take them down with it. */}
+        <DashboardHeader
+          streakDays={stats?.streakDays ?? 0}
+          todayXp={xp.data?.today ?? 0}
+          stage={stage ?? null}
+          goal={progress.data?.nextGoal ?? null}
+          primaryKey={primaryKey}
+        />
         {progress.isError ? (
           <ErrorCard
             message={errorMessage(progress.error, 'Could not work out which stage you are on.')}
             onRetry={() => void progress.refetch()}
           />
-        ) : progress.data && stage && primaryKey ? (
-          <StageHeader stage={stage} goal={progress.data.nextGoal} primaryKey={primaryKey} />
         ) : null}
 
         {dashboard.isPending ? (
@@ -183,7 +197,6 @@ export default function DashboardScreen() {
               due={stats?.dueCount ?? 0}
               newLeftToday={newLeftToday}
               newPerDay={newPerDay}
-              streakDays={stats?.streakDays ?? 0}
             />
             <Text style={styles.deckLine} testID="deck-line">
               {stats?.newAvailable ?? 0} cards not yet studied
@@ -218,63 +231,105 @@ export default function DashboardScreen() {
 }
 
 /**
- * The stage the learner is on, its one goal line, and the single action that
- * moves it along.
+ * What the dashboard leads with: the streak, today's XP ring, the stage and its
+ * one goal line, and the single action that moves it along.
+ *
+ * Deliberately compact (spec §10). Every other figure the app counts — the
+ * streak record, the XP total and level, the ladders — lives on the progress
+ * screen, which the top row of this card is the way in to. Repeating them here
+ * would make the first thing seen each morning a report rather than a prompt.
  *
  * `goal` is rendered exactly as `computeProgress` wrote it — the wording of the
- * goal is that module's job, not this screen's.
+ * goal is that module's job, not this screen's. Both it and `stage` are null
+ * while the progress query is loading, or if it failed; the streak and the ring
+ * still show, because they come from elsewhere.
  */
-function StageHeader({
+function DashboardHeader({
+  streakDays,
+  todayXp,
   stage,
   goal,
   primaryKey,
 }: {
-  stage: Stage;
-  goal: string;
-  primaryKey: ActivityKey;
+  streakDays: number;
+  todayXp: number;
+  stage: Stage | null;
+  goal: string | null;
+  primaryKey: ActivityKey | null;
 }) {
   const router = useRouter();
-  const activity = ACTIVITIES[primaryKey];
+  const activity = primaryKey ? ACTIVITIES[primaryKey] : null;
 
   return (
     <View style={styles.stageCard} testID="stage-card">
+      <Pressable
+        style={({ pressed }) => [styles.headerStats, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel={`Progress. ${streakDays} day streak, ${todayXp} of ${DAILY_GOAL} XP today.`}
+        testID="header-progress"
+        onPress={() => router.push('/progress')}
+      >
+        <View style={styles.headerStat} testID="stat-streak">
+          <Text style={styles.headerStatValue}>{streakDays}</Text>
+          <Text style={styles.headerStatLabel}>
+            day{streakDays === 1 ? '' : 's'} in a row
+          </Text>
+        </View>
+        <View style={styles.headerStat} testID="stat-xp">
+          {/* The ring is a disc with a hole in it, so the hole has to be
+              painted the colour of what it sits on. */}
+          <XpRing today={todayXp} size={60} hole={colors.background} />
+          <Text style={styles.headerStatLabel}>of {DAILY_GOAL} XP today</Text>
+        </View>
+        {/* Says out loud what the row is: two numbers and a chevron would leave
+            the way to the rest of them to be guessed at. */}
+        <View style={styles.headerLink}>
+          <Text style={styles.headerLinkText}>Progress</Text>
+          <Text style={styles.chevron}>›</Text>
+        </View>
+      </Pressable>
+
       <Text style={styles.stageLabel}>Where you are</Text>
       <Text style={styles.stageName} testID="stage-name">
-        {STAGE_NAME[stage]}
+        {stage ? STAGE_NAME[stage] : '—'}
       </Text>
       <Text style={styles.stageGoal} testID="stage-goal">
-        {goal}
+        {goal ?? 'Working out where you are…'}
       </Text>
 
-      <Pressable
-        style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-        accessibilityRole="button"
-        accessibilityLabel={activity.label}
-        testID="stage-primary"
-        onPress={() => router.push(activity.href)}
-      >
-        <Text style={styles.primaryButtonLabel}>{activity.label}</Text>
-        <Text style={styles.primaryButtonBlurb}>{activity.blurb}</Text>
-      </Pressable>
+      {activity ? (
+        <Pressable
+          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={activity.label}
+          testID="stage-primary"
+          onPress={() => router.push(activity.href)}
+        >
+          <Text style={styles.primaryButtonLabel}>{activity.label}</Text>
+          <Text style={styles.primaryButtonBlurb}>{activity.blurb}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
 /**
- * The daily habit, on screen at every stage: what is due, what is left of
- * today's new cards, and the streak. Tapping it starts a session, which is why
- * the numbers and the way in are one card rather than two.
+ * The daily habit, on screen at every stage: what is due and what is left of
+ * today's new cards. Tapping it starts a session, which is why the numbers and
+ * the way in are one card rather than two.
+ *
+ * The streak used to sit here too. It has moved up into the header, where it
+ * belongs beside the XP ring — the same figure in two cards on one screen is
+ * clutter, not emphasis.
  */
 function ReviewCard({
   due,
   newLeftToday,
   newPerDay,
-  streakDays,
 }: {
   due: number;
   newLeftToday: number;
   newPerDay: number;
-  streakDays: number;
 }) {
   const router = useRouter();
 
@@ -294,13 +349,6 @@ function ReviewCard({
           testID="stat-new"
           caption={`of ${newPerDay}`}
         />
-        <Stat
-          label="Streak"
-          value={streakDays}
-          testID="stat-streak"
-          caption={streakDays === 1 ? 'day' : 'days'}
-          accent
-        />
       </View>
       <View style={styles.reviewFooter}>
         <View style={styles.activityText}>
@@ -317,18 +365,16 @@ function Stat({
   label,
   value,
   caption,
-  accent,
   testID,
 }: {
   label: string;
   value: number;
   caption?: string;
-  accent?: boolean;
   testID?: string;
 }) {
   return (
     <View style={styles.stat} testID={testID}>
-      <Text style={[styles.statValue, accent && styles.statValueAccent]}>{value}</Text>
+      <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
       {caption ? <Text style={styles.statCaption}>{caption}</Text> : null}
     </View>
@@ -417,6 +463,21 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.xs,
   },
+  headerStats: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.background,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  headerStat: { flex: 1, alignItems: 'center', gap: 2 },
+  headerLink: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  headerLinkText: { fontSize: 13, fontWeight: '600', color: colors.primary },
+  headerStatValue: { fontSize: 32, fontWeight: '700', color: colors.accent },
+  headerStatLabel: { fontSize: 12, color: colors.textMuted, textAlign: 'center' },
   stageLabel: { fontSize: 12, color: colors.textMuted, textTransform: 'uppercase' },
   stageName: { fontSize: 34, fontWeight: '700', color: colors.primary },
   stageGoal: { fontSize: 15, color: colors.text, marginBottom: spacing.sm },
@@ -448,7 +509,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   statValue: { fontSize: 34, fontWeight: '700', color: colors.primary },
-  statValueAccent: { color: colors.accent },
   statLabel: { fontSize: 13, color: colors.text, marginTop: spacing.xs },
   statCaption: { fontSize: 12, color: colors.textMuted },
   reviewFooter: {

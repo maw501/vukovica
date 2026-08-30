@@ -192,6 +192,14 @@ export default function ReviewScreen() {
           userCard: latestRows.current.get(cardId) ?? null,
         });
         latestRows.current.set(cardId, saved);
+        // XP for the answer, both decks alike: a letter answered is a card
+        // answered (spec §10 sets one review tariff, not one per deck).
+        //
+        // Awaited so `onSettled`'s invalidation cannot race the insert, but
+        // never allowed to fail the answer: the review itself is saved by this
+        // point, and losing two points is not worth telling the user their
+        // answer did not save.
+        await api.awardXp('review').catch(() => undefined);
         return saved;
       });
       // The chain must survive a failed link, or one network blip would stall
@@ -246,6 +254,8 @@ export default function ReviewScreen() {
       // A card graduating to 'review' is a word learnt, which moves the Words
       // goal and can move the stage itself.
       void queryClient.invalidateQueries({ queryKey: ['progress'] });
+      // ...and every answer moves the XP ring, whether or not it graduated.
+      void queryClient.invalidateQueries({ queryKey: ['xp'] });
     },
   });
 

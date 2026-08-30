@@ -75,13 +75,21 @@ export default function StoryScreen() {
   });
 
   const finish = useMutation({
-    mutationFn: () => api.finishStory(id),
+    mutationFn: async () => {
+      const finished = await api.finishStory(id);
+      // The story is saved by this point, so the XP is a garnish: a failed
+      // award costs its twenty points and must not turn a finished story into
+      // an error message. Awaited so the invalidation below cannot race it.
+      await api.awardXp('story').catch(() => undefined);
+      return finished;
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['stories'] }),
         // The Reading ladder counts finished stories, so the dashboard's stage
         // and goal move the moment this lands.
         queryClient.invalidateQueries({ queryKey: ['progress'] }),
+        queryClient.invalidateQueries({ queryKey: ['xp'] }),
       ]);
       if (router.canGoBack()) router.back();
       else router.replace('/reader');
