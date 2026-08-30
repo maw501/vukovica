@@ -391,6 +391,17 @@ word cards` at the end); the second needs the account to exist already, which on
 an upgrade it does, so it does **not** wait for step 6.1 this time; the third
 speaks whatever has no clip — on a first phase 3 run, all 754 cards.
 
+**On an upgrade, backdate the 43 GHMILY rows after seeding** — the starter deck
+already has older `created_at` values, so without this the book's words queue
+behind all 681 (the SOURCES order in `seed.mjs` only fixes fresh installs).
+With the service key (SQL editor or PostgREST PATCH):
+
+```sql
+update public.cards set created_at = (
+  select min(created_at) - interval '1 hour' from public.cards where kind = 'word'
+) where domain = 'ghmily' and kind = 'word';
+```
+
 Piper and ffmpeg must be installed first — [`audio-batch.md`](audio-batch.md),
 "Installing the engine". If they are not and you would rather ship without
 audio, skip this line: the speaker buttons simply do not appear.
