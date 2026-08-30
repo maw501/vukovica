@@ -185,11 +185,16 @@ PWA manifest and the icons. There is no server side.
 
 ```sh
 npx vercel login
-npx vercel deploy --prod dist
+cp -R .vercel dist/.vercel   # copy the project link into the build output
+cd dist && npx vercel deploy --prod --yes && cd ..
 ```
 
-Answer the setup prompts once (scope, project name `vukovica`); Vercel remembers
-the link afterwards, so later deploys are the same one-liner.
+Answer the setup prompts once (scope, project name `vukovica`); the link is
+stored in `.vercel/` at the repo root. NEVER run `npx vercel deploy --prod dist`
+from the repo root: passing a path makes the CLI treat `dist` as a *new project
+root* and it silently creates (and deploys to) a separate project named `dist`.
+Deploy from inside `dist/` with the link copied in, as above — the build wipes
+`dist/` each time, so the `cp -R` is needed on every deploy.
 
 Vercel resolves `/review` to `review.html` for static deployments, which is what
 the export expects. If a deep link ever 404s, write `dist/vercel.json` and
@@ -348,7 +353,8 @@ single-user.
 npx supabase db push                          # if migrations changed
 npx supabase functions deploy --no-verify-jwt # if functions changed
 mv .env.local .env.local.dev && rm -rf dist && npm run build:web; mv .env.local.dev .env.local
-npx vercel deploy --prod dist
+cp -R .vercel dist/.vercel
+cd dist && npx vercel deploy --prod --yes && cd ..
 ```
 
 Always check the grep in step 3 before uploading. Env values baked into the
