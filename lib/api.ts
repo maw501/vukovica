@@ -12,7 +12,14 @@ import {
   type LetterDelta,
 } from '@/lib/drills';
 import { gradeCard, newUserCard, type ReviewGrade } from '@/lib/fsrs';
-import { buildQueue } from '@/lib/queue';
+import {
+  buildQueue,
+  cardsInDeck,
+  deckAllowance,
+  deckKind,
+  DEFAULT_DECK,
+  type Deck,
+} from '@/lib/queue';
 import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
 import { computeProgress, type Progress } from '@/lib/stages';
 import {
@@ -101,14 +108,25 @@ async function updateSettings(
   return data;
 }
 
-export interface DashboardStats {
+/**
+ * One deck's numbers. Words and letters are counted separately all the way
+ * through (spec §4): a letter answered today must not spend the word deck's
+ * daily allowance, and "Due 3" on the Letters tile has to mean three letters.
+ */
+export interface DeckStats {
   /** Already-studied `user_cards` rows whose `due` has passed (excludes `new`). */
   dueCount: number;
-  /** Cards the user has never studied -- no `user_cards` row yet. */
+  /** Cards of this deck the user has never studied -- no `user_cards` row yet. */
   newAvailable: number;
-  /** New cards already introduced today (local day), for the daily allowance. */
+  /** New cards of this deck already introduced today (local day). */
   newDoneToday: number;
-  /** Consecutive local days with at least one review, ending today or yesterday. */
+}
+
+export interface DashboardStats extends DeckStats {
+  /**
+   * Consecutive local days with at least one review, ending today or yesterday.
+   * Deck-independent on purpose -- the streak is the habit, not the deck.
+   */
   streakDays: number;
 }
 
@@ -164,47 +182,66 @@ async function fetchStreakDays(userId: string, now: Date): Promise<number> {
  * This is the single definition of the daily allowance's denominator: the
  * dashboard's "new today" figure and `getQueue`'s new-card budget both call it,
  * so the two can never drift apart.
+ *
+ * Scoped to one deck through an inner join on `cards`. `review_logs.card_id` is
+ * `on delete cascade`, so a log always has a card and the join drops nothing
+ * that the unfiltered count used to include.
  */
-async function countNewDoneToday(userId: string, now: Date): Promise<number> {
+async function countNewDoneToday(userId: string, now: Date, deck: Deck): Promise<number> {
   const { count, error } = await supabase
     .from('review_logs')
-    .select('*', { count: 'exact', head: true })
+    .select('*, cards!inner(kind)', { count: 'exact', head: true })
     .eq('user_id', userId)
     .eq('state_before', 'new')
+    .eq('cards.kind', deckKind(deck))
     .gte('reviewed_at', startOfLocalDay(now).toISOString());
   if (error) throw error;
   return count ?? 0;
 }
 
-/** Everything the home dashboard shows, in one call. */
-async function getDashboard(now: Date = new Date()): Promise<DashboardStats> {
+/**
+ * One deck's due / new figures.
+ *
+ * Every count is filtered by `cards.kind`, through an inner join where the row
+ * being counted is a `user_cards` row. The FK makes that join total, so for the
+ * word deck these are exactly the counts the dashboard has always shown.
+ *
+ * The daily allowance is deliberately *not* fetched here. It is a pure function
+ * of the deck and `settings.new_per_day` (`deckAllowance`), and every caller
+ * already holds the settings row in its own `['settings']` query — reading it
+ * again here would put a second, racing `getSettings()` on the dashboard's
+ * first paint for the sake of arithmetic the caller can do itself.
+ */
+async function getDeckStats(deck: Deck = DEFAULT_DECK, now: Date = new Date()): Promise<DeckStats> {
   const userId = await requireUserId();
-  const nowIso = now.toISOString();
+  return deckStatsFor(userId, deck, now);
+}
 
-  // The streak paginates, so it runs alongside the head counts rather than
-  // after them. One `Promise.all` over all of it, so nothing can reject unobserved.
-  const [[due, totalCards, studiedCards], newDoneToday, streakDays] = await Promise.all([
-    Promise.all([
-      // `state = 'new'` is excluded deliberately: a freshly introduced card gets
-      // a `user_cards` row defaulting to due = now(), so counting it here would
-      // show it as Due *and* against the new allowance. New cards belong to the
-      // allowance only.
-      supabase
-        .from('user_cards')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .neq('state', 'new')
-        .lte('due', nowIso),
-      supabase.from('cards').select('*', { count: 'exact', head: true }),
-      // Every `user_cards` row references a card (FK), one row per card, so
-      // "cards with no user_cards row" is just the difference of two counts.
-      supabase
-        .from('user_cards')
-        .select('*', { count: 'exact', head: true })
-        .eq('user_id', userId),
-    ]),
-    countNewDoneToday(userId, now),
-    fetchStreakDays(userId, now),
+async function deckStatsFor(userId: string, deck: Deck, now: Date): Promise<DeckStats> {
+  const nowIso = now.toISOString();
+  const kind = deckKind(deck);
+
+  const [due, totalCards, studiedCards, newDoneToday] = await Promise.all([
+    // `state = 'new'` is excluded deliberately: a freshly introduced card gets
+    // a `user_cards` row defaulting to due = now(), so counting it here would
+    // show it as Due *and* against the new allowance. New cards belong to the
+    // allowance only.
+    supabase
+      .from('user_cards')
+      .select('*, cards!inner(kind)', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('cards.kind', kind)
+      .neq('state', 'new')
+      .lte('due', nowIso),
+    supabase.from('cards').select('*', { count: 'exact', head: true }).eq('kind', kind),
+    // Every `user_cards` row references a card (FK), one row per card, so
+    // "cards of this deck with no user_cards row" is the difference of two counts.
+    supabase
+      .from('user_cards')
+      .select('*, cards!inner(kind)', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('cards.kind', kind),
+    countNewDoneToday(userId, now, deck),
   ]);
 
   for (const result of [due, totalCards, studiedCards]) {
@@ -215,8 +252,25 @@ async function getDashboard(now: Date = new Date()): Promise<DashboardStats> {
     dueCount: due.count ?? 0,
     newAvailable: Math.max(0, (totalCards.count ?? 0) - (studiedCards.count ?? 0)),
     newDoneToday,
-    streakDays,
   };
+}
+
+/**
+ * Everything the home dashboard's habit card shows: the word deck's numbers
+ * plus the streak. The Letters tile asks for its own deck separately, and the
+ * streak is not repeated there — it counts reviews of either deck.
+ */
+async function getDashboard(now: Date = new Date()): Promise<DashboardStats> {
+  const userId = await requireUserId();
+
+  // The streak paginates, so it runs alongside the deck counts rather than
+  // after them. One `Promise.all` over both, so nothing can reject unobserved.
+  const [stats, streakDays] = await Promise.all([
+    deckStatsFor(userId, DEFAULT_DECK, now),
+    fetchStreakDays(userId, now),
+  ]);
+
+  return { ...stats, streakDays };
 }
 
 // ---------------------------------------------------------------------------
@@ -265,7 +319,11 @@ function embeddedCard(row: DueJoinRow): CardRow | null {
  * `studied` can be filtered out, so the allowance is always filled while the
  * deck still has unseen cards.
  */
-async function fetchNewCards(userId: string, allowance: number): Promise<CardRow[]> {
+async function fetchNewCards(
+  userId: string,
+  allowance: number,
+  deck: Deck,
+): Promise<CardRow[]> {
   if (allowance <= 0) return [];
 
   const studied = await supabase.from('user_cards').select('card_id').eq('user_id', userId);
@@ -275,6 +333,9 @@ async function fetchNewCards(userId: string, allowance: number): Promise<CardRow
   const candidates = await supabase
     .from('cards')
     .select('*')
+    // The deck filter. Without it the letters would queue themselves as word
+    // cards the moment they were seeded.
+    .eq('kind', deckKind(deck))
     // Words the user added come first (`created_by` is null for seed rows):
     // someone who has just typed in a word wants it in today's session, not in
     // two months' time once the seed deck has been worked through.
@@ -299,16 +360,20 @@ async function fetchNewCards(userId: string, allowance: number): Promise<CardRow
  * the card is actually graded, so an introduced-but-unanswered card stays out of
  * both the due count and the daily allowance.
  */
-async function getQueue(now: Date = new Date()): Promise<QueueEntry[]> {
+async function getQueue(deck: Deck = DEFAULT_DECK, now: Date = new Date()): Promise<QueueEntry[]> {
   const userId = await requireUserId();
+  const kind = deckKind(deck);
 
   const [settings, newDoneToday, dueResult] = await Promise.all([
     getSettings(),
-    countNewDoneToday(userId, now),
+    countNewDoneToday(userId, now, deck),
     supabase
       .from('user_cards')
-      .select('*, cards(*)')
+      // `!inner` rather than a plain embed so the deck filter below can apply to
+      // the joined card. The FK is `not null`, so the join drops nothing.
+      .select('*, cards!inner(*)')
       .eq('user_id', userId)
+      .eq('cards.kind', kind)
       // Matches the dashboard's `dueCount`. Under lazy insertion a `new` row
       // cannot exist, but if one ever did, counting it here and not there would
       // make "Due 0" open a session with cards in it.
@@ -320,7 +385,7 @@ async function getQueue(now: Date = new Date()): Promise<QueueEntry[]> {
   ]);
   if (dueResult.error) throw dueResult.error;
 
-  const newPerDay = settings.new_per_day ?? DEFAULT_NEW_PER_DAY;
+  const newPerDay = deckAllowance(deck, settings.new_per_day ?? DEFAULT_NEW_PER_DAY);
 
   // Index the due rows by card id before handing the bare rows to `buildQueue`,
   // which orders ids and knows nothing about card content.
@@ -329,12 +394,19 @@ async function getQueue(now: Date = new Date()): Promise<QueueEntry[]> {
   for (const row of dueResult.data ?? []) {
     const card = embeddedCard(row);
     if (!card) continue; // Should be unreachable: the FK guarantees a card.
+    // The two decks never mix in one session (spec §4). PostgREST has already
+    // filtered by kind; this is the belt to that braces, because a card of the
+    // wrong deck reaching the screen would be shown with the wrong layout.
+    if (card.kind !== kind) continue;
     const { cards: _embedded, ...userCard } = row;
     dueCards.push(userCard);
     byId.set(card.id, { cardId: card.id, isNew: false, card, userCard });
   }
 
-  const newCards = await fetchNewCards(userId, Math.max(0, newPerDay - newDoneToday));
+  const newCards = cardsInDeck(
+    await fetchNewCards(userId, Math.max(0, newPerDay - newDoneToday), deck),
+    deck,
+  );
   for (const card of newCards) {
     byId.set(card.id, { cardId: card.id, isNew: true, card, userCard: null });
   }
@@ -409,17 +481,22 @@ async function submitReview({
 // ---------------------------------------------------------------------------
 
 /**
- * The whole deck, alphabetically.
+ * The word deck, alphabetically.
  *
  * Deviation from the brief, which specified `listCards(search)`: searching is
  * done in memory by `filterCards` instead, because a card's Latin form is
  * derived by `cyrToLat` rather than stored, so "mama" could never match "мама"
  * in SQL. One fetch of a few hundred rows beats a round trip per keystroke.
+ *
+ * Words only. Both callers -- the deck browser and the trainer's drill pool --
+ * want vocabulary: a letter card's `sr_cyr` is a *pair* ("Б б"), which is not
+ * a word to browse, edit or type as a transliteration drill.
  */
 async function listCards(): Promise<CardRow[]> {
   const { data, error } = await supabase
     .from('cards')
     .select('*')
+    .eq('kind', deckKind('words'))
     .order('sr_cyr', { ascending: true })
     .limit(MAX_ROWS)
     .returns<CardRow[]>();
@@ -589,10 +666,15 @@ async function getProgress(): Promise<Progress> {
     // 'relearning' is deliberately excluded — a lapsed word is one he no longer
     // knows, and counting it would make the milestone ladder go backwards
     // silently rather than honestly.
+    //
+    // Words only: letter cards share this table, and letter *mastery* is the
+    // trainer's `drill_stats`, not FSRS (spec §4). Counting a graduated letter
+    // as a known word would inflate the Words ladder by up to thirty.
     supabase
       .from('user_cards')
-      .select('*', { count: 'exact', head: true })
+      .select('*, cards!inner(kind)', { count: 'exact', head: true })
       .eq('user_id', userId)
+      .eq('cards.kind', deckKind('words'))
       .eq('state', 'review'),
     countStoriesFinished(userId),
     supabase
@@ -684,6 +766,7 @@ export const api = {
   getSettings,
   updateSettings,
   getDashboard,
+  getDeckStats,
   getQueue,
   submitReview,
   listCards,

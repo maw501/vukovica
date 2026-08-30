@@ -99,6 +99,23 @@ export function cyrToLat(input: string): string {
   return output;
 }
 
+/**
+ * The Latin form of a letter *pair* as a letter card prints it:
+ * "Б б" -> "B b", "Љ љ" -> "Lj lj", "Ђ ђ" -> "Đ đ".
+ *
+ * Not simply `cyrToLat` of the pair. A capital digraph with no letter beside it
+ * is read as all-caps — the rule that gets КРАЉ right as KRALJ — so "Љ љ" would
+ * come out "LJ lj". A letter cited on its own is title-case, so this lower-cases
+ * the pair, transliterates that, and capitalises the first glyph.
+ *
+ * Anything that is not a pair still round-trips sensibly: the input is
+ * transliterated as usual and only its first character is raised.
+ */
+export function latinLetterPair(pair: string): string {
+  const lat = cyrToLat(pair.toLowerCase());
+  return lat.charAt(0).toUpperCase() + lat.slice(1);
+}
+
 /** Transliterate Serbian Latin to Serbian Cyrillic. */
 export function latToCyr(input: string): string {
   let output = '';

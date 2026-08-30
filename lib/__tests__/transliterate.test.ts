@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { cyrToLat, latToCyr } from '@/lib/transliterate';
+import { cyrToLat, latinLetterPair, latToCyr } from '@/lib/transliterate';
 
 /**
  * The full Serbian alphabet, in Vuk's order, as (cyrillic, latin) pairs.
@@ -130,6 +130,44 @@ describe('latToCyr', () => {
     expect(latToCyr('')).toBe('');
     expect(latToCyr('qwxy')).toBe('qwxy');
     expect(latToCyr('Београд')).toBe('Београд');
+  });
+});
+
+/**
+ * The letter-card pair form. `cyrToLat` alone is not it: a lone capital digraph
+ * has no lowercase neighbour to prove it is title-case, so it defaults to all
+ * caps — right for КРАЉ, wrong for a letter cited on its own.
+ */
+describe('latinLetterPair', () => {
+  it('title-cases a digraph rather than shouting it', () => {
+    expect(latinLetterPair('Љ љ')).toBe('Lj lj');
+    expect(latinLetterPair('Њ њ')).toBe('Nj nj');
+    expect(latinLetterPair('Џ џ')).toBe('Dž dž');
+    // The behaviour this fixes, still correct for words:
+    expect(cyrToLat('Љ љ')).toBe('LJ lj');
+    expect(cyrToLat('КРАЉ')).toBe('KRALJ');
+  });
+
+  it('handles the single-glyph letters and the diacritics', () => {
+    expect(latinLetterPair('А а')).toBe('A a');
+    expect(latinLetterPair('Б б')).toBe('B b');
+    expect(latinLetterPair('Ђ ђ')).toBe('Đ đ');
+    expect(latinLetterPair('Ж ж')).toBe('Ž ž');
+    expect(latinLetterPair('Ћ ћ')).toBe('Ć ć');
+    expect(latinLetterPair('Ч ч')).toBe('Č č');
+    expect(latinLetterPair('Ш ш')).toBe('Š š');
+  });
+
+  it('agrees with cyrToLat for every non-digraph letter of the alphabet', () => {
+    for (const [cyr, lat] of ALPHABET) {
+      const expected = `${lat.charAt(0).toUpperCase()}${lat.slice(1)} ${lat}`;
+      expect(latinLetterPair(`${cyr.toUpperCase()} ${cyr}`)).toBe(expected);
+    }
+  });
+
+  it('leaves an empty or non-Serbian input alone but for its first letter', () => {
+    expect(latinLetterPair('')).toBe('');
+    expect(latinLetterPair('?')).toBe('?');
   });
 });
 

@@ -22,11 +22,12 @@ import {
 
 import { api, DEFAULT_NEW_PER_DAY } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
+import { deckAllowance } from '@/lib/queue';
 import type { Stage } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 
-/** The four places the dashboard can send the learner. */
-type ActivityKey = 'trainer' | 'review' | 'reader' | 'deck';
+/** The five places the dashboard can send the learner. */
+type ActivityKey = 'trainer' | 'letters' | 'review' | 'reader' | 'deck';
 
 interface Activity {
   /** English, like every other piece of chrome. */
@@ -42,6 +43,13 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
     blurb: 'Type the alphabet until it is second nature',
     href: '/trainer',
   },
+  letters: {
+    label: 'Letters',
+    blurb: 'Flashcards for the azbuka, five a day',
+    // Same review screen, filtered to `kind = 'letter'`. Word reviews and
+    // letter reviews never share a session queue (spec §4).
+    href: '/review?deck=letters',
+  },
   review: { label: 'Review', blurb: 'Today’s cards', href: '/review' },
   reader: { label: 'Reader', blurb: 'Stories to read in Cyrillic', href: '/reader' },
   deck: { label: 'Deck', blurb: 'Browse, edit and add words', href: '/deck' },
@@ -49,9 +57,16 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
 
 /**
  * The order the rows are listed in: the stages in path order, with the deck
- * last. The deck is a tool rather than a stage.
+ * last. The deck is a tool rather than a stage. Letters sits with the trainer,
+ * because both are the alphabet.
  */
-const ACTIVITY_ORDER: readonly ActivityKey[] = ['trainer', 'review', 'reader', 'deck'];
+const ACTIVITY_ORDER: readonly ActivityKey[] = [
+  'trainer',
+  'letters',
+  'review',
+  'reader',
+  'deck',
+];
 
 /**
  * The activity each stage's primary button points at.
@@ -88,11 +103,32 @@ export default function DashboardScreen() {
     queryKey: ['progress'],
     queryFn: () => api.getProgress(),
   });
+  // The letters deck's own figures. A separate query rather than part of
+  // `getDashboard`, because the streak is deck-independent and paginates —
+  // there is no sense fetching it twice to label one tile.
+  const letters = useQuery({
+    queryKey: ['deck-stats', 'letters'],
+    queryFn: () => api.getDeckStats('letters'),
+  });
 
   const stats = dashboard.data;
   const newPerDay = settings.data?.new_per_day ?? DEFAULT_NEW_PER_DAY;
   const newLeftToday = stats
     ? Math.max(0, Math.min(newPerDay - stats.newDoneToday, stats.newAvailable))
+    : 0;
+
+  const lettersDue = letters.data?.dueCount ?? 0;
+  // The letters allowance is fixed rather than the user's setting, so it comes
+  // from `deckAllowance` here rather than from the fetched stats — no second
+  // read of a row this screen already has.
+  const lettersNewLeft = letters.data
+    ? Math.max(
+        0,
+        Math.min(
+          deckAllowance('letters', newPerDay) - letters.data.newDoneToday,
+          letters.data.newAvailable,
+        ),
+      )
     : 0;
 
   const stage = progress.data?.stage;
@@ -116,6 +152,7 @@ export default function DashboardScreen() {
             void dashboard.refetch();
             void settings.refetch();
             void progress.refetch();
+            void letters.refetch();
           }}
           tintColor={colors.primary}
         />
@@ -155,9 +192,25 @@ export default function DashboardScreen() {
         )}
 
         <View style={styles.activities}>
-          {rows.map((key) => (
-            <ActivityButton key={key} activityKey={key} activity={ACTIVITIES[key]} />
-          ))}
+          {rows.map((key) =>
+            key === 'letters' ? (
+              <ActivityButton
+                key={key}
+                activityKey={key}
+                activity={ACTIVITIES[key]}
+                badge={lettersDue > 0 ? String(lettersDue) : undefined}
+                blurb={
+                  letters.isError
+                    ? 'Could not count the letters due.'
+                    : letters.data
+                      ? lettersBlurb(lettersDue, lettersNewLeft, letters.data.newAvailable)
+                      : undefined
+                }
+              />
+            ) : (
+              <ActivityButton key={key} activityKey={key} activity={ACTIVITIES[key]} />
+            ),
+          )}
         </View>
       </View>
     </ScrollView>
@@ -282,27 +335,55 @@ function Stat({
   );
 }
 
+/**
+ * The Letters row's second line: what is actually waiting, rather than what the
+ * deck is for.
+ *
+ * `newAvailable` separates "today's five are done" from "the whole azbuka is
+ * in circulation" — and an unseeded deck reads as the latter, which is true:
+ * there is nothing due, and nothing more to introduce.
+ */
+function lettersBlurb(due: number, newLeft: number, newAvailable: number): string {
+  const parts: string[] = [];
+  if (due > 0) parts.push(`${due} due`);
+  if (newLeft > 0) parts.push(`${newLeft} new`);
+  if (parts.length > 0) return parts.join(' · ');
+  return newAvailable > 0 ? 'Nothing due — more letters tomorrow' : 'Nothing due today';
+}
+
 function ActivityButton({
   activityKey,
   activity,
+  badge,
+  blurb,
 }: {
   activityKey: ActivityKey;
   activity: Activity;
+  /** A count worth seeing before tapping, e.g. the letters deck's due cards. */
+  badge?: string;
+  /** Overrides `activity.blurb` when the row has something live to say. */
+  blurb?: string;
 }) {
   const router = useRouter();
+  const line = blurb ?? activity.blurb;
 
   return (
     <Pressable
       style={({ pressed }) => [styles.activity, pressed && styles.activityPressed]}
       accessibilityRole="button"
-      accessibilityLabel={activity.label}
+      accessibilityLabel={badge ? `${activity.label}, ${badge} due` : activity.label}
       testID={`activity-${activityKey}`}
       onPress={() => router.push(activity.href)}
     >
       <View style={styles.activityText}>
         <Text style={styles.activityLabel}>{activity.label}</Text>
-        <Text style={styles.activityBlurb}>{activity.blurb}</Text>
+        <Text style={styles.activityBlurb}>{line}</Text>
       </View>
+      {badge ? (
+        <Text style={styles.badge} testID={`activity-${activityKey}-badge`}>
+          {badge}
+        </Text>
+      ) : null}
       <Text style={styles.chevron}>›</Text>
     </Pressable>
   );
@@ -400,6 +481,19 @@ const styles = StyleSheet.create({
   activityText: { flexShrink: 1, gap: 2 },
   activityLabel: { fontSize: 20, fontWeight: '600', color: colors.text },
   activityBlurb: { fontSize: 13, color: colors.textMuted },
+  badge: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primaryOn,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    minWidth: 28,
+    textAlign: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    marginRight: spacing.sm,
+    overflow: 'hidden',
+  },
   chevron: { fontSize: 28, color: colors.primary },
   errorCard: {
     backgroundColor: colors.surface,

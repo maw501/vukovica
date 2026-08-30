@@ -6,10 +6,17 @@
  * answered Again), and every answer is written straight through by
  * `api.submitReview`. Re-entering the screen builds a fresh session, so the
  * queue on screen is never a stale copy of the database.
+ *
+ * One screen, two decks. `?deck=letters` studies the azbuka instead of the
+ * vocabulary; everything below the card — FSRS, the grade buttons, the
+ * `submit_review` write, the summary — is identical, because a letter is
+ * scheduled exactly like a word (spec §4). The deck decides three things only:
+ * which cards the queue asks for, which dashboard figures an answer moves, and
+ * how the card itself is laid out.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigation, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,12 +27,13 @@ import {
   View,
 } from 'react-native';
 
-import { api, type DashboardStats, type QueueEntry } from '@/lib/api';
+import { api, type DeckStats, type QueueEntry } from '@/lib/api';
 import { audioSupported, playAudioPath } from '@/lib/audio';
 import { confirmAction } from '@/lib/confirm';
 import { errorMessage } from '@/lib/errors';
 import { formatInterval } from '@/lib/format';
 import { gradeIntervals, newUserCard, type ReviewGrade } from '@/lib/fsrs';
+import { parseDeck, type Deck } from '@/lib/queue';
 import {
   answerCurrent,
   createSession,
@@ -36,8 +44,8 @@ import {
   type SessionState,
 } from '@/lib/session';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
-import { cyrToLat } from '@/lib/transliterate';
-import type { UserCardRow } from '@/lib/types';
+import { cyrToLat, latinLetterPair } from '@/lib/transliterate';
+import type { CardRow, UserCardRow } from '@/lib/types';
 
 const GRADES: { grade: ReviewGrade; label: string; colour: string }[] = [
   { grade: 1, label: 'Again', colour: colors.accent },
@@ -45,6 +53,37 @@ const GRADES: { grade: ReviewGrade; label: string; colour: string }[] = [
   { grade: 3, label: 'Good', colour: colors.primary },
   { grade: 4, label: 'Easy', colour: '#2F7A4D' },
 ];
+
+/** The header title and the empty-session wording, per deck. */
+const DECK_CHROME: Record<Deck, { title: string; empty: string }> = {
+  words: {
+    title: 'Review',
+    empty: 'No cards are due right now. Come back later, or add new words to the deck.',
+  },
+  letters: {
+    title: 'Letters',
+    empty:
+      'No letters are due right now. Come back tomorrow for the next few — ' +
+      'or practise typing the ones you have in the Cyrillic trainer.',
+  },
+};
+
+/**
+ * Where the dashboard keeps this deck's figures.
+ *
+ * The word deck's live inside the habit card's `['dashboard']` entry (they come
+ * back with the streak, in one call); the letters deck has a query of its own.
+ * Both hold a `DeckStats`, which is what lets one optimistic patch serve both.
+ */
+function deckStatsKey(deck: Deck): readonly unknown[] {
+  return deck === 'words' ? ['dashboard'] : ['deck-stats', deck];
+}
+
+/**
+ * What the optimistic patch may find under `deckStatsKey`: a `DeckStats`, plus
+ * the streak when the entry is the word deck's `DashboardStats`.
+ */
+type PatchableStats = DeckStats & { streakDays?: number };
 
 /** Asked before walking away from answers that never reached the database. */
 function confirmLeavingUnsaved(count: number): Promise<boolean> {
@@ -75,9 +114,26 @@ export default function ReviewScreen() {
   const navigation = useNavigation();
   const queryClient = useQueryClient();
 
+  // `?deck=letters`, or the word deck for anything else — including a link with
+  // no parameter at all, which is every existing route into this screen.
+  const params = useLocalSearchParams<{ deck?: string }>();
+  const deck = parseDeck(params.deck);
+  const statsKey = deckStatsKey(deck);
+
+  // The header says which deck this is. Set here rather than in the layout,
+  // which declares one `review` screen and cannot see the query parameter.
+  // `Stack.Screen` would have to be repeated in all six of this screen's
+  // returns; one effect covers them all.
+  useEffect(() => {
+    navigation.setOptions({ title: DECK_CHROME[deck].title });
+  }, [navigation, deck]);
+
   const queue = useQuery({
-    queryKey: ['queue'],
-    queryFn: () => api.getQueue(),
+    // Keyed by deck: the two sessions are different queues and must never share
+    // a cache entry, or opening Letters would show the words fetched a moment
+    // ago while its own fetch is in flight.
+    queryKey: ['queue', deck],
+    queryFn: () => api.getQueue(deck),
     // Always refetched on mount (the root default is 30s), never mid-session:
     // a session that reshuffled itself under the user's thumb would be worse
     // than a slightly stale one.
@@ -152,18 +208,24 @@ export default function ReviewScreen() {
       return run;
     },
     onMutate: async ({ countsAsNew, countsAsDue }: GradeVars) => {
-      await queryClient.cancelQueries({ queryKey: ['dashboard'] });
-      const previous = queryClient.getQueryData<DashboardStats>(['dashboard']);
-      queryClient.setQueryData<DashboardStats>(['dashboard'], (current) =>
+      await queryClient.cancelQueries({ queryKey: statsKey });
+      const previous = queryClient.getQueryData<PatchableStats>(statsKey);
+      // Spread rather than rebuild: the word deck's entry is a `DashboardStats`,
+      // which carries the streak this patch has no business dropping.
+      queryClient.setQueryData<PatchableStats>(statsKey, (current) =>
         current
           ? {
+              ...current,
               dueCount: countsAsDue ? Math.max(0, current.dueCount - 1) : current.dueCount,
               newAvailable: countsAsNew
                 ? Math.max(0, current.newAvailable - 1)
                 : current.newAvailable,
               newDoneToday: countsAsNew ? current.newDoneToday + 1 : current.newDoneToday,
-              // Answering anything today makes the streak at least 1.
-              streakDays: Math.max(current.streakDays, 1),
+              // Answering anything today makes the streak at least 1 — but only
+              // the word deck's entry has a streak to lift.
+              ...(current.streakDays === undefined
+                ? null
+                : { streakDays: Math.max(current.streakDays, 1) }),
             }
           : current,
       );
@@ -172,12 +234,15 @@ export default function ReviewScreen() {
     onError: (_error, _variables, context) => {
       // Undo the optimistic patch: a save that failed must not leave the
       // dashboard claiming the card was answered, however briefly.
-      if (context?.previous) queryClient.setQueryData(['dashboard'], context.previous);
+      if (context?.previous) queryClient.setQueryData(statsKey, context.previous);
     },
     onSettled: () => {
       // Inactive while this screen is up, so this marks it stale rather than
       // refetching -- the dashboard reloads when the user goes back to it.
+      // Both decks' figures are invalidated: a letter review lifts the streak
+      // inside `['dashboard']` as surely as a word review does.
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      void queryClient.invalidateQueries({ queryKey: ['deck-stats'] });
       // A card graduating to 'review' is a word learnt, which moves the Words
       // goal and can move the stage itself.
       void queryClient.invalidateQueries({ queryKey: ['progress'] });
@@ -273,17 +338,17 @@ export default function ReviewScreen() {
   const restart = useCallback(() => {
     setRestarting(true);
     void submitChain.current
-      .then(() => queryClient.refetchQueries({ queryKey: ['queue'], exact: true }))
+      .then(() => queryClient.refetchQueries({ queryKey: ['queue', deck], exact: true }))
       .then(() => {
         // A refetch that failed leaves the old data in place; rebuilding from it
         // is exactly what this function exists to avoid. The query's own error
         // state renders instead.
-        if (queryClient.getQueryState(['queue'])?.status === 'error') return;
+        if (queryClient.getQueryState(['queue', deck])?.status === 'error') return;
         setSession(null);
         setRevealed(false);
       })
       .finally(() => setRestarting(false));
-  }, [queryClient]);
+  }, [queryClient, deck]);
 
   if (queue.isPending || settings.isPending || session === null) {
     return (
@@ -313,6 +378,7 @@ export default function ReviewScreen() {
     return (
       <Summary
         session={session}
+        emptyMessage={DECK_CHROME[deck].empty}
         onDone={() => void goHome()}
         onMore={restart}
         restarting={restarting}
@@ -336,6 +402,9 @@ export default function ReviewScreen() {
   }
 
   const { position, total } = sessionProgress(session);
+  // Off the card itself, not off the deck parameter: the two agree, and the
+  // card is what is actually being rendered.
+  const isLetter = entry.card.kind === 'letter';
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -376,42 +445,10 @@ export default function ReviewScreen() {
             accessibilityLabel="Show the answer"
             testID="card"
           >
-            <Text style={styles.cyrillic} testID="card-cyr">
-              {entry.card.sr_cyr}
-            </Text>
-
-            {revealed ? (
-              <View style={styles.answer} testID="card-answer">
-                {showLatin ? (
-                  <Text style={styles.latin} testID="card-lat">
-                    {cyrToLat(entry.card.sr_cyr)}
-                  </Text>
-                ) : null}
-                <Text style={styles.english} testID="card-en">
-                  {entry.card.en}
-                </Text>
-                <View style={styles.metaRow}>
-                  {[entry.card.pos, entry.card.gender, entry.card.aspect]
-                    .filter((value): value is string => Boolean(value))
-                    .map((value) => (
-                      <Text key={value} style={styles.meta}>
-                        {value}
-                      </Text>
-                    ))}
-                </View>
-
-                <View style={styles.divider} />
-
-                <Text style={styles.exampleCyr} testID="card-example-cyr">
-                  {entry.card.example_cyr}
-                </Text>
-                {showLatin ? (
-                  <Text style={styles.exampleLat}>{cyrToLat(entry.card.example_cyr)}</Text>
-                ) : null}
-                <Text style={styles.exampleEn}>{entry.card.example_en}</Text>
-              </View>
+            {isLetter ? (
+              <LetterFace card={entry.card} revealed={revealed} />
             ) : (
-              <Text style={styles.hint}>Tap to show the answer</Text>
+              <WordFace card={entry.card} revealed={revealed} showLatin={showLatin} />
             )}
           </Pressable>
 
@@ -438,6 +475,100 @@ export default function ReviewScreen() {
         )}
       </View>
     </ScrollView>
+  );
+}
+
+/**
+ * A word card: the headword, and on reveal its Latin form, gloss, grammar
+ * metadata and example sentence. Unchanged from before the letters deck landed.
+ */
+function WordFace({
+  card,
+  revealed,
+  showLatin,
+}: {
+  card: CardRow;
+  revealed: boolean;
+  showLatin: boolean;
+}) {
+  return (
+    <>
+      <Text style={styles.cyrillic} testID="card-cyr">
+        {card.sr_cyr}
+      </Text>
+
+      {revealed ? (
+        <View style={styles.answer} testID="card-answer">
+          {showLatin ? (
+            <Text style={styles.latin} testID="card-lat">
+              {cyrToLat(card.sr_cyr)}
+            </Text>
+          ) : null}
+          <Text style={styles.english} testID="card-en">
+            {card.en}
+          </Text>
+          <View style={styles.metaRow}>
+            {[card.pos, card.gender, card.aspect]
+              .filter((value): value is string => Boolean(value))
+              .map((value) => (
+                <Text key={value} style={styles.meta}>
+                  {value}
+                </Text>
+              ))}
+          </View>
+
+          <View style={styles.divider} />
+
+          <Text style={styles.exampleCyr} testID="card-example-cyr">
+            {card.example_cyr}
+          </Text>
+          {showLatin ? <Text style={styles.exampleLat}>{cyrToLat(card.example_cyr)}</Text> : null}
+          <Text style={styles.exampleEn}>{card.example_en}</Text>
+        </View>
+      ) : (
+        <Text style={styles.hint}>Tap to show the answer</Text>
+      )}
+    </>
+  );
+}
+
+/**
+ * A letter card (spec §4): the Cyrillic pair, big enough to read at arm's
+ * length, and on reveal the Latin pair and the mnemonic.
+ *
+ * `sr_cyr` holds the pair as printed ("Б б"), so the Latin pair is derived from
+ * it with `latinLetterPair` — which is `cyrToLat` plus the one thing a cited
+ * letter needs: "Љ љ" is "Lj lj", not the all-caps "LJ lj" a lone capital
+ * digraph would otherwise get.
+ *
+ * The Latin pair ignores the `show_latin` setting, deliberately. On a word card
+ * the transliteration is a support line for someone still learning to read
+ * Cyrillic; on a letter card it *is* the answer, and hiding it would leave the
+ * back of the card with nothing but a sound description.
+ */
+function LetterFace({ card, revealed }: { card: CardRow; revealed: boolean }) {
+  return (
+    <>
+      <Text style={styles.letterPair} testID="card-cyr">
+        {card.sr_cyr}
+      </Text>
+
+      {revealed ? (
+        <View style={styles.answer} testID="card-answer">
+          <Text style={styles.letterLatin} testID="card-lat">
+            {latinLetterPair(card.sr_cyr)}
+          </Text>
+
+          <View style={styles.divider} />
+
+          <Text style={styles.mnemonic} testID="card-en">
+            {card.en}
+          </Text>
+        </View>
+      ) : (
+        <Text style={styles.hint}>Tap to show the answer</Text>
+      )}
+    </>
   );
 }
 
@@ -523,6 +654,7 @@ function SpeakButton({
 
 function Summary({
   session,
+  emptyMessage,
   onDone,
   onMore,
   restarting,
@@ -530,6 +662,11 @@ function Summary({
   onRetry,
 }: {
   session: SessionState;
+  /**
+   * What to say when the session had nothing in it — including an empty letters
+   * deck, before the seed migration has run anywhere.
+   */
+  emptyMessage: string;
   onDone: () => void;
   onMore: () => void;
   /** The queue is being refetched; a new session appears when it lands. */
@@ -544,9 +681,7 @@ function Summary({
       <View style={styles.content} testID="summary">
         <Text style={styles.summaryTitle}>{total === 0 ? 'Nothing to study' : 'Well done!'}</Text>
         <Text style={styles.summarySubtitle} testID="summary-total">
-          {total === 0
-            ? 'No cards are due right now. Come back later, or add new words to the deck.'
-            : `${total} answer${total === 1 ? '' : 's'} in this session`}
+          {total === 0 ? emptyMessage : `${total} answer${total === 1 ? '' : 's'} in this session`}
         </Text>
 
         {total > 0 ? (
@@ -635,6 +770,11 @@ const styles = StyleSheet.create({
   },
   cardTap: { alignSelf: 'stretch', alignItems: 'center', gap: spacing.sm },
   cyrillic: { fontSize: 44, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  // Deliberately far larger than a word headword: a letter pair is two glyphs,
+  // and the shape of the glyph is the entire thing being learnt.
+  letterPair: { fontSize: 96, lineHeight: 116, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  letterLatin: { fontSize: 48, fontWeight: '600', color: colors.primary, textAlign: 'center' },
+  mnemonic: { fontSize: 17, color: colors.text, textAlign: 'center' },
   hint: { fontSize: 13, color: colors.textMuted, marginTop: spacing.md },
   answer: { alignItems: 'center', gap: spacing.xs, alignSelf: 'stretch' },
   latin: { fontSize: 20, color: colors.textMuted },
