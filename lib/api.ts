@@ -16,6 +16,7 @@ import { callEdgeFunction } from '@/lib/edge';
 import { gradeCard, newUserCard, type ReviewGrade } from '@/lib/fsrs';
 import { buildQueue } from '@/lib/queue';
 import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
+import { computeProgress, type Progress } from '@/lib/stages';
 import {
   collectLocalDays,
   computeStreak,
@@ -528,6 +529,77 @@ async function generateCard(input: string): Promise<CardInput> {
 }
 
 // ---------------------------------------------------------------------------
+// Progression
+// ---------------------------------------------------------------------------
+
+/**
+ * Postgres's "relation does not exist" and PostgREST's schema-cache equivalent
+ * (raised before the statement is ever sent, when the table is absent from the
+ * cached schema).
+ */
+const MISSING_RELATION = new Set(['42P01', 'PGRST205']);
+
+/**
+ * True when the failure is "there is no `stories` table", rather than a real
+ * error worth surfacing. The message check is a backstop for a PostgREST
+ * version that reports the missing relation under some other code.
+ */
+function isMissingStoriesTable(error: { code?: string; message?: string }): boolean {
+  if (error.code && MISSING_RELATION.has(error.code)) return true;
+  const message = error.message ?? '';
+  return message.includes('stories') && /does not exist|schema cache/i.test(message);
+}
+
+/**
+ * Stories the user has finished — the Читање ladder's numerator.
+ *
+ * Defensive on purpose: the `stories` table is created by the graded-reader
+ * task later in this phase, so until that migration lands this query fails with
+ * a missing relation. Progress is still meaningful without it (no stories read
+ * is exactly what zero means), so that one failure reads as 0 and every other
+ * error still throws. Nothing here needs removing once the table exists.
+ */
+async function countStoriesFinished(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('stories')
+    .select('*', { count: 'exact', head: true })
+    // Redundant under RLS, but it keeps this a user-scoped index lookup.
+    .eq('user_id', userId)
+    .not('finished_at', 'is', null);
+  if (!error) return count ?? 0;
+  if (isMissingStoriesTable(error)) return 0;
+  throw error;
+}
+
+/**
+ * Where the learner is on the staged path, in one batch of reads.
+ *
+ * The three inputs are independent, so they go out together; `computeProgress`
+ * turns them into the stage and goal without any further I/O. `listDrillStats`
+ * reaches for the session again, which is a local read, not a round trip.
+ */
+async function getProgress(): Promise<Progress> {
+  const userId = await requireUserId();
+
+  const [drillStats, known, storiesRead] = await Promise.all([
+    listDrillStats(),
+    // "Known" is a word that has graduated out of learning: `state = 'review'`.
+    // 'relearning' is deliberately excluded — a lapsed word is one he no longer
+    // knows, and counting it would make the milestone ladder go backwards
+    // silently rather than honestly.
+    supabase
+      .from('user_cards')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('state', 'review'),
+    countStoriesFinished(userId),
+  ]);
+  if (known.error) throw known.error;
+
+  return computeProgress({ drillStats, knownWords: known.count ?? 0, storiesRead });
+}
+
+// ---------------------------------------------------------------------------
 // Tutor chat
 // ---------------------------------------------------------------------------
 
@@ -645,6 +717,7 @@ export const api = {
   generateCard,
   listDrillStats,
   recordDrillAttempts,
+  getProgress,
   listChatMessages,
   appendChatMessage,
   getLearnerState,
