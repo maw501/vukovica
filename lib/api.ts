@@ -783,6 +783,11 @@ async function fetchXpTotal(userId: string): Promise<number> {
       // Redundant under RLS, but it is what lets the planner use
       // `xp_events_user_created_idx`.
       .eq('user_id', userId)
+      // A `range` without an order is not pagination: Postgres may return the
+      // rows in a different order for each page, which would double-count some
+      // events and drop others. `id` breaks ties within one instant.
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: true })
       .range(from, from + XP_PAGE_SIZE - 1)
       .returns<{ amount: number | null }[]>();
     if (error) throw error;
