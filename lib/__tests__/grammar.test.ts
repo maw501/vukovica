@@ -164,6 +164,34 @@ describe('explainBlocks', () => {
     ]);
   });
 
+  it('keeps the numbers of a numbered list, which the content refers back to', () => {
+    // `simple-questions` numbers the two ways to ask a yes-or-no question and
+    // then discusses them by number. Without this branch the two lines joined
+    // into one run-on paragraph.
+    expect(explainBlocks('Two ways.\n\n1. **Да ли** first.\n2. Verb + ли.')).toEqual([
+      { kind: 'paragraph', text: 'Two ways.' },
+      { kind: 'bullet', text: 'Да ли first.', marker: '1.' },
+      { kind: 'bullet', text: 'Verb + ли.', marker: '2.' },
+    ]);
+  });
+
+  it('leaves a dash bullet unmarked, so the screen supplies the dot', () => {
+    const [bullet] = explainBlocks('- шта — what');
+    expect(bullet).toEqual({ kind: 'bullet', text: 'шта — what' });
+    expect((bullet as { marker?: string }).marker).toBeUndefined();
+  });
+
+  it('does not mistake prose that opens with a number for a list', () => {
+    // A marker is digits followed by `.` or `)` *and* a space. Neither an
+    // ordinal nor a bare number at the start of a sentence is one.
+    expect(explainBlocks('1st person singular.')).toEqual([
+      { kind: 'paragraph', text: '1st person singular.' },
+    ]);
+    expect(explainBlocks('18 items drill this topic.')).toEqual([
+      { kind: 'paragraph', text: '18 items drill this topic.' },
+    ]);
+  });
+
   it('strips the only two emphasis marks the content uses', () => {
     expect(explainBlocks('The **enclitic** form of *to be*.')).toEqual([
       { kind: 'paragraph', text: 'The enclitic form of to be.' },

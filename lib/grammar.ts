@@ -105,16 +105,29 @@ export function promptParts(prompt: string): PromptParts {
   return { before: prompt.slice(0, at), after: prompt.slice(at + BLANK.length) };
 }
 
-/** One renderable piece of a topic's explanation. */
+/**
+ * One renderable piece of a topic's explanation.
+ *
+ * A `bullet` carries its own `marker` when the source numbered it — "1.", "2."
+ * — and leaves it undefined when the source used `- `, so the screen supplies
+ * the dot. The number belongs to the content: `simple-questions` numbers the
+ * two ways to ask a yes-or-no question and then refers to them as the first and
+ * the second, which a bulleted list would not support.
+ */
 export type ExplainBlock =
   | { kind: 'paragraph'; text: string }
-  | { kind: 'bullet'; text: string };
+  | { kind: 'bullet'; text: string; marker?: string };
+
+/**
+ * The start of an ordered-list item: "1. " or "2) ", with its number captured.
+ */
+const ORDERED_ITEM = /^(\d+[.)])\s+(.*)$/;
 
 /**
  * `explain_md` cut into blocks a React Native screen can render.
  *
- * The content uses exactly three constructs — paragraphs separated by a blank
- * line, `- ` bullets, and `**bold**` / `*italic*` emphasis
+ * The content uses four constructs — paragraphs separated by a blank line,
+ * `- ` bullets, `1. ` numbered items, and `**bold**` / `*italic*` emphasis
  * (`data/phase3/README.md`) — so a markdown dependency for a dozen explanations
  * would be a library to carry, audit and keep in step with Expo for no gain.
  * Emphasis is dropped rather than styled: it marks a term as a term, which a
@@ -141,6 +154,18 @@ export function explainBlocks(md: string): ExplainBlock[] {
       // A bullet ends the paragraph above it even without a blank line between.
       flush();
       blocks.push({ kind: 'bullet', text: stripEmphasis(line.slice(2).trim()) });
+      continue;
+    }
+    const ordered = ORDERED_ITEM.exec(line);
+    if (ordered) {
+      // Same block kind, because a numbered item is a list item that happens to
+      // print a number instead of a dot; the screen renders both with one branch.
+      flush();
+      blocks.push({
+        kind: 'bullet',
+        text: stripEmphasis(ordered[2].trim()),
+        marker: ordered[1],
+      });
       continue;
     }
     paragraph.push(line);

@@ -85,7 +85,11 @@ lib/                 all the logic worth testing, tests in lib/__tests__/
   audio.ts, edge.ts    TTS playback; Edge Function calls
   stores/auth.ts       zustand auth store (React Query owns server state)
 data/seed-deck.json  the 681-card seed deck
-scripts/             seed.mjs (deck seeder), make-icons.mjs (icon generator)
+data/phase3/         the hand-authored phase 3 content: the alphabet, the
+                     grammar topics, the GHMILY book and its vocabulary, and
+                     the warm-up stories (README.md there gives every shape)
+scripts/             seed.mjs (word decks), seed-user-content.mjs (the book and
+                     the stories), make-icons.mjs (icon generator)
 public/              copied verbatim into the web build (manifest.json, icons)
 supabase/
   migrations/          schema, RLS, grants, RPCs, the audio storage bucket,
@@ -154,7 +158,7 @@ documents every key.
 
 | File | Read by | Holds |
 | --- | --- | --- |
-| `.env.local` | Expo (client bundle) and `npm run db:seed` | `EXPO_PUBLIC_*` values, plus the service-role key for seeding |
+| `.env.local` | Expo (client bundle) and the `db:seed*` scripts | `EXPO_PUBLIC_*` values, plus the service-role key for seeding |
 | `supabase/.env.local` | `npm run functions` | AI provider keys and TTS settings |
 | `.env` | Expo, for production builds only | the `EXPO_PUBLIC_*` values you want baked into `dist/` |
 
@@ -202,20 +206,41 @@ reach, and `tts` uses it to build the audio URLs it hands back.
 
 ```sh
 npm run db:migrate        # apply migrations (supabase db push --local)
-npm run db:seed           # load data/seed-deck.json into public.cards (681 rows)
+npm run db:seed           # load the word decks into public.cards (724 rows)
 ```
 
-`db:seed` is idempotent — it upserts on the unique Cyrillic form — so it is safe
-to re-run after adding cards to the JSON.
+`db:seed` loads both card files — `data/seed-deck.json` (681) and
+`data/phase3/ghmily-vocab.json` (43, the first book's words) — in that order,
+which is the order they reach the new-card queue. It is idempotent: it upserts
+on the unique Cyrillic form, so it is safe to re-run after adding cards to
+either JSON.
+
+The alphabet (30 letter cards) and the twelve grammar topics are *not* seeded
+here. They ship in migrations, so `db:migrate` alone gives you a database the
+letters deck and the grammar section already work in.
+
+The book and the stories belong to an account, so they wait until you have one
+(step 3):
+
+```sh
+npm run db:seed:user                    # the project's only account
+npm run db:seed:user -- mark@local.dev  # or name it
+```
+
+That inserts *Погоди колико те волим* (Claude's rendering of *Guess How Much I
+Love You*) with its 16 pages, and the four warm-up stories, all from
+`data/phase3/`. It is idempotent per row — an existing book, page or story is
+left exactly as it is, so finishing a story or editing a page survives a re-run.
 
 To start over at any point:
 
 ```sh
 npx supabase db reset --local   # wipes the database, replays every migration
-npm run db:seed                 # re-seed
+npm run db:seed                 # re-seed the decks
 ```
 
-That also deletes your account, so sign up again (below).
+That also deletes your account, so sign up again (below) and re-run
+`npm run db:seed:user`.
 
 ### 3. Run it
 
@@ -244,7 +269,7 @@ that, so the next `npm run dev` picks up where you left off; `npx supabase stop
 ## Tests and checks
 
 ```sh
-npm test                  # vitest, single run (380 tests)
+npm test                  # vitest, single run (410 tests)
 npm run typecheck         # tsc --noEmit
 npm run build:web         # static export into dist/, with the bundler cache cleared
 ```
@@ -257,8 +282,10 @@ would least notice, building for production.
 The test suite is deliberately pure: transliteration round-trips, the FSRS
 wrapper, queue and session selection, drill selection, chat parsing, the stage
 boundaries and milestone ladders in `lib/stages.ts`, the reader's word splitting
-and sentence lookup, seed-deck validation, and prompt-constraint tests over
-`_shared/prompts.ts`. Nothing needs a running database.
+and sentence lookup, validation of every seed file (the deck, the alphabet, the
+grammar, the book, the stories) against the migrations and scripts that load
+them, and prompt-constraint tests over `_shared/prompts.ts`. Nothing needs a
+running database.
 
 To inspect a web export locally, serve `dist/` with any static server that maps
 clean URLs onto `<route>.html` (that is what Vercel does), then sign in against

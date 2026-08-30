@@ -950,8 +950,18 @@ async function findCardByWord(word: string): Promise<CardRow | null> {
     .returns<CardRow[]>();
   if (error) throw error;
 
+  const rows = data ?? [];
+  // The exactly-cased card first. Case matters in exactly one pair of
+  // headwords, and it is one the reader meets on its first night: Месец, the
+  // moon, is a separate card from месец, the month (Serbian capitalises the
+  // celestial body). `ilike` cannot tell them apart, so without this the tap
+  // would land on whichever row Postgres returned first.
   const lowered = needle.toLowerCase();
-  return (data ?? []).find((card) => card.sr_cyr.trim().toLowerCase() === lowered) ?? null;
+  return (
+    rows.find((card) => card.sr_cyr.trim() === needle) ??
+    rows.find((card) => card.sr_cyr.trim().toLowerCase() === lowered) ??
+    null
+  );
 }
 
 // ---------------------------------------------------------------------------

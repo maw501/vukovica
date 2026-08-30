@@ -206,7 +206,9 @@ export default function GrammarTopicScreen() {
             {explainBlocks(topic.explain_md).map((block, blockIndex) =>
               block.kind === 'bullet' ? (
                 <View key={blockIndex} style={styles.bullet}>
-                  <Text style={styles.bulletDot}>•</Text>
+                  {/* The number when the content numbered the item, the dot
+                      otherwise — see `explainBlocks`. */}
+                  <Text style={styles.bulletDot}>{block.marker ?? '•'}</Text>
                   <Text style={styles.bulletText}>{block.text}</Text>
                 </View>
               ) : (

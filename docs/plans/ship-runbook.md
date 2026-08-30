@@ -68,8 +68,13 @@ production build, and this file has no business anywhere near the bundle.
 node --env-file=.env.hosted scripts/seed.mjs
 ```
 
-Expect `Done. public.cards now holds 681 rows.` The seeder upserts on the unique
+Expect `Done. public.cards now holds 724 word cards.` — the 681-card starter
+deck plus the 43 words of the first book. The seeder upserts on the unique
 Cyrillic form, so re-running it is harmless.
+
+The alphabet and the grammar topics need no seeding step: they ship in
+migrations, so `db push` already put them there. The book and the warm-up
+stories do, but they belong to an account, so they wait until step 6.1.
 
 ## 2. Supabase: Edge Functions
 
@@ -258,9 +263,20 @@ single-user.
    with a real email and a password you will not forget. If the project has
    email confirmations on (the hosted default), confirm the link, then sign in.
    You should land on the dashboard reading **Азбука**, `master 30 more letters
-   (0/30)`, with `681 cards not yet studied` underneath — a brand-new account is
+   (0/30)`, with `724 cards not yet studied` underneath — a brand-new account is
    at the start of the path, so the first stage and an empty letter count are
    exactly right.
+
+   Now that the account exists, give it the content that has an owner — the
+   GHMILY book with its 16 pages, and the four warm-up stories:
+
+   ```sh
+   node --env-file=.env.hosted scripts/seed-user-content.mjs you@example.com
+   ```
+
+   It inserts only what is missing, so it is safe to run again after adding
+   content to `data/phase3/`. Reload: **Books** should list *Погоди колико те
+   волим* and **Reader** four stories.
 
 2. **Close the door, server-side.** Dashboard → **Authentication → Sign In /
    Providers → Email**, turn **Allow new users to sign up** off. This is the

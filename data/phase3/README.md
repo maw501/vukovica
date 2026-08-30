@@ -232,8 +232,10 @@ Topic order (`slug` — items):
 
 Seeding + UI notes:
 
-- `explain_md` uses only paragraphs, bullet lists and `**bold**` — no tables,
-  no headings, no links. A plain-text renderer degrades acceptably.
+- `explain_md` uses only paragraphs, bullet lists, numbered lists (`1. `, in
+  `simple-questions` alone) and `**bold**` — no tables, no headings, no links.
+  `lib/grammar.ts`'s `explainBlocks` renders all four; a plain-text renderer
+  degrades acceptably.
 - Every `prompt` contains the literal three-underscore blank `___`; the UI can
   split on it to render an inline input.
 - `answer_cyr` is the blank's content only, so exact-match checking works:
