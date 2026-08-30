@@ -26,12 +26,12 @@ interface Activity {
   href: Href | null;
 }
 
-// Trainer arrives in Task 9, Chat in Task 10. Wiring one up is a one-line
-// change here -- swap the `null` for its href.
+// Chat arrives in Task 10. Wiring it up is a one-line change here -- swap the
+// `null` for its href.
 const ACTIVITIES: Activity[] = [
   { cyr: 'Учи', en: 'Review', href: '/review' },
   { cyr: 'Разговор', en: 'Chat with tutor', href: null },
-  { cyr: 'Ћирилица', en: 'Cyrillic trainer', href: null },
+  { cyr: 'Ћирилица', en: 'Cyrillic trainer', href: '/trainer' },
   { cyr: 'Шпил', en: 'Deck', href: '/deck' },
 ];
 

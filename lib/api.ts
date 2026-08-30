@@ -6,6 +6,11 @@
  */
 
 import { parseGeneratedCard, trimCardInput, type CardInput } from '@/lib/cardInput';
+import {
+  BUMP_DRILL_STATS_FN,
+  bumpDrillStatsParams,
+  type LetterDelta,
+} from '@/lib/drills';
 import { callEdgeFunction } from '@/lib/edge';
 import { gradeCard, newUserCard, type ReviewGrade } from '@/lib/fsrs';
 import { buildQueue } from '@/lib/queue';
@@ -17,7 +22,7 @@ import {
   streakFromLocalDays,
 } from '@/lib/streak';
 import { supabase } from '@/lib/supabase';
-import type { CardRow, SettingsRow, UserCardRow } from '@/lib/types';
+import type { CardRow, DrillStatRow, SettingsRow, UserCardRow } from '@/lib/types';
 
 // `settings.new_per_day` is nullable in the row type (a `select` can return
 // null for it), so every consumer needs a default. One definition, here.
@@ -469,6 +474,42 @@ async function deleteCard(id: string): Promise<void> {
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------------------
+// Cyrillic trainer
+// ---------------------------------------------------------------------------
+
+/**
+ * The user's per-letter drill accuracy — thirty rows at the very most, so no
+ * paging worries. `pickDrillWords` turns it into the bias for the next round.
+ */
+async function listDrillStats(): Promise<DrillStatRow[]> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('drill_stats')
+    .select('*')
+    // Redundant under RLS, but it is what makes this a primary-key lookup.
+    .eq('user_id', userId)
+    .returns<DrillStatRow[]>();
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Add one drilled word's (or round's) marks to the per-letter counters.
+ *
+ * Through `bump_drill_stats` rather than an upsert, because PostgREST's upsert
+ * *replaces* the counts and this has to add to them. One request per answered
+ * word — never one per keystroke — and the returned rows are the new totals.
+ */
+async function recordDrillAttempts(deltas: readonly LetterDelta[]): Promise<DrillStatRow[]> {
+  if (deltas.length === 0) return [];
+  const { data, error } = await supabase.rpc(BUMP_DRILL_STATS_FN, bumpDrillStatsParams(deltas));
+  if (error) throw error;
+  // The project has no generated `Database` types, so an RPC's result type is
+  // whatever the caller says it is. The function returns `setof drill_stats`.
+  return (data ?? []) as DrillStatRow[];
+}
+
 /**
  * Ask the `generate` Edge Function to draft a card for `input` (either script).
  * The result is shown in an editable preview, never saved straight through.
@@ -489,4 +530,6 @@ export const api = {
   updateCard,
   deleteCard,
   generateCard,
+  listDrillStats,
+  recordDrillAttempts,
 };

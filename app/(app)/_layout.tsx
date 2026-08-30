@@ -34,6 +34,7 @@ export default function AppLayout() {
       <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       <Stack.Screen name="review" options={{ title: 'Учи' }} />
       <Stack.Screen name="deck" options={{ title: 'Шпил' }} />
+      <Stack.Screen name="trainer" options={{ title: 'Ћирилица' }} />
     </Stack>
   );
 }
