@@ -220,8 +220,8 @@ hits the host directly and 404s. Verified locally against `dist/` with Vercel's
 own `cleanUrls` resolution: `/`, `/reader` and `/trainer` all 200, and
 `/story/b67dffc8-…` 404s.
 
-So ship a rewrite. Put it in `public/vercel.json`, not `dist/`, so it survives
-the next build:
+So ship a rewrite. It lives in `public/vercel.json`, not `dist/`, so it
+survives the next build:
 
 ```json
 {
@@ -233,6 +233,10 @@ the next build:
 
 Then check it on the live site before you call the deploy done: open a story,
 **reload the page**, and confirm the story comes back rather than a 404.
+
+The file is already in place, verified to survive `build:web` into
+`dist/vercel.json` unchanged — the live-site reload check above is still the
+one that matters.
 
 ## 5. Point Supabase Auth at the deployment
 
