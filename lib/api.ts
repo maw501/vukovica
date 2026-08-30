@@ -540,14 +540,24 @@ async function generateCard(input: string): Promise<CardInput> {
 const MISSING_RELATION = new Set(['42P01', 'PGRST205']);
 
 /**
- * True when the failure is "there is no `stories` table", rather than a real
- * error worth surfacing. The message check is a backstop for a PostgREST
- * version that reports the missing relation under some other code.
+ * Relation-shaped failure messages, as a backstop for a PostgREST version that
+ * reports a missing table under some other code.
+ *
+ * Deliberately narrow. A looser "mentions stories and does not exist" test also
+ * matches *column* errors — 42703 "column stories.finished_at does not exist"
+ * and PGRST204 "Could not find the 'finished_at' column of 'stories' in the
+ * schema cache" — and swallowing those would hide a column-name mismatch when
+ * the reader migration lands, silently reporting 0 stories forever.
  */
-function isMissingStoriesTable(error: { code?: string; message?: string }): boolean {
+const MISSING_RELATION_MESSAGE = /relation .*stories.* does not exist|could not find the table/i;
+
+/**
+ * True when the failure is "there is no `stories` table", rather than a real
+ * error worth surfacing.
+ */
+export function isMissingStoriesTable(error: { code?: string; message?: string }): boolean {
   if (error.code && MISSING_RELATION.has(error.code)) return true;
-  const message = error.message ?? '';
-  return message.includes('stories') && /does not exist|schema cache/i.test(message);
+  return MISSING_RELATION_MESSAGE.test(error.message ?? '');
 }
 
 /**

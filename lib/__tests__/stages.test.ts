@@ -305,6 +305,24 @@ describe('nextGoal', () => {
     expect(goal).not.toContain('stories');
   });
 
+  it('points at the words when the story ladder tops out inside Читање', () => {
+    // Twenty stories read on a vocabulary still short of 300: the ladder is
+    // finished but the stage is not, and "read 0 more stories (25/20)" would be
+    // no goal at all.
+    const result = progress({ knownWords: 255, storiesRead: 25 });
+    expect(result.stage).toBe('citanje');
+    expect(result.nextGoal).toContain('Читање');
+    expect(result.nextGoal).not.toContain('0 more');
+    expect(result.nextGoal).toContain('45');
+    expect(result.nextGoal).toContain('255/300');
+  });
+
+  it('says "word", not "words", for the last one to Разговор', () => {
+    const goal = progress({ knownWords: 299, storiesRead: 20 }).nextGoal;
+    expect(goal).toContain('1 word');
+    expect(goal).not.toContain('1 words');
+  });
+
   it('names the conversation stage once it is reached', () => {
     expect(progress({ knownWords: 300, storiesRead: 5 }).nextGoal).toContain('Разговор');
   });
@@ -317,6 +335,9 @@ describe('nextGoal', () => {
       { knownWords: 99 },
       { knownWords: 100, storiesRead: 0 },
       { knownWords: 150, storiesRead: 19 },
+      { knownWords: 150, storiesRead: 20 },
+      { knownWords: 255, storiesRead: 25 },
+      { knownWords: 299, storiesRead: 20 },
       { knownWords: 300, storiesRead: 5 },
       { knownWords: 5000, storiesRead: 500 },
     ];

@@ -189,7 +189,16 @@ function nextGoalFor(stage: Stage, progress: Omit<Progress, 'nextGoal'>): string
     }
     case 'citanje': {
       const target = progress.storyMilestone;
-      const left = Math.max(0, target - progress.storiesRead);
+      const left = target - progress.storiesRead;
+      // The story ladder can top out inside Читање — twenty stories read on a
+      // vocabulary still short of 300 leaves the stage but not the ladder. Ask
+      // for "0 more stories (25/20)" and the goal stops being a goal, so point
+      // at what actually opens Разговор from here: the word count. The stage is
+      // Читање exactly when known < 300, so this remainder is never zero.
+      if (left <= 0) {
+        const words = RAZGOVOR_KNOWN_WORDS - progress.knownWords;
+        return `Читање — ${pluralise(words, 'word', 'words')} to Разговор (${progress.knownWords}/${RAZGOVOR_KNOWN_WORDS})`;
+      }
       return `Читање — read ${pluralise(left, 'more story', 'more stories')} (${progress.storiesRead}/${target})`;
     }
     case 'razgovor':
