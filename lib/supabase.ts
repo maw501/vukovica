@@ -10,18 +10,11 @@ import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-// Metro inlines `process.env.EXPO_PUBLIC_*` at build time, so these have to be
-// written out as full static member expressions -- destructuring `process.env`
-// would leave them undefined in the bundle.
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+import { supabaseAnonKey, supabaseUrl } from '@/lib/config';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  throw new Error(
-    'EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are required. ' +
-      'Copy .env.example to .env.local and fill in the values from `npx supabase status`.',
-  );
-}
+// `functionsUrl` is re-exported so that `${functionsUrl}/tutor` reads the same
+// from here as it always has; its definition lives in `lib/config.ts`.
+export { functionsUrl } from '@/lib/config';
 
 /**
  * Session storage. On web, passing `undefined` lets supabase-js use its default
@@ -51,6 +44,3 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: Platform.OS === 'web',
   },
 });
-
-/** Base URL for Edge Function calls (`${functionsUrl}/tutor`, etc.). */
-export const functionsUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1`;

@@ -6,6 +6,7 @@
  */
 
 import { parseGeneratedCard, trimCardInput, type CardInput } from '@/lib/cardInput';
+import { formatLearnerState, LEARNER_STATE_WORDS, type LapsedCard } from '@/lib/chat';
 import {
   BUMP_DRILL_STATS_FN,
   bumpDrillStatsParams,
@@ -22,7 +23,14 @@ import {
   streakFromLocalDays,
 } from '@/lib/streak';
 import { supabase } from '@/lib/supabase';
-import type { CardRow, DrillStatRow, SettingsRow, UserCardRow } from '@/lib/types';
+import type {
+  CardRow,
+  ChatMessageRow,
+  ChatRole,
+  DrillStatRow,
+  SettingsRow,
+  UserCardRow,
+} from '@/lib/types';
 
 // `settings.new_per_day` is nullable in the row type (a `select` can return
 // null for it), so every consumer needs a default. One definition, here.
@@ -519,6 +527,111 @@ async function generateCard(input: string): Promise<CardInput> {
   return parseGeneratedCard(body);
 }
 
+// ---------------------------------------------------------------------------
+// Tutor chat
+// ---------------------------------------------------------------------------
+
+/** How much history the chat screen loads. Context sent is a subset (Task 10). */
+export const CHAT_HISTORY_LIMIT = 50;
+
+/**
+ * The most recent messages, oldest first.
+ *
+ * Read newest-first and reversed, because "the last 50" is what a chat screen
+ * wants and PostgREST has no `offset from the end`. Ordered by `created_at`
+ * (the indexed column) with `id` breaking ties: two messages written inside the
+ * same clock tick would otherwise come back in an arbitrary order, and a
+ * question after its answer reads as nonsense.
+ */
+async function listChatMessages(limit: number = CHAT_HISTORY_LIMIT): Promise<ChatMessageRow[]> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    // Redundant under RLS, but it is what lets the planner use
+    // `chat_messages_user_created_idx`.
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: false })
+    .limit(limit)
+    .returns<ChatMessageRow[]>();
+  if (error) throw error;
+  return (data ?? []).reverse();
+}
+
+/**
+ * Append one message to the history and return the saved row.
+ *
+ * The user's message is written *before* the stream starts, so a failed reply
+ * leaves what he typed on screen and in the database rather than losing it. The
+ * assistant's is written after the stream completes, with the DODAJ lines still
+ * in it — the raw text is what the tutor said, and the chips are re-derived at
+ * render, so the convention can change without rewriting history.
+ */
+async function appendChatMessage(role: ChatRole, content: string): Promise<ChatMessageRow> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert({ user_id: userId, role, content })
+    .select()
+    .single<ChatMessageRow>();
+  if (error) throw error;
+  return data;
+}
+
+/** A `user_cards` row with just enough of its card to name the word. */
+interface LapsedJoinRow {
+  lapses: number | null;
+  cards: Pick<CardRow, 'sr_cyr' | 'en'> | Pick<CardRow, 'sr_cyr' | 'en'>[] | null;
+}
+
+/**
+ * The learner-state block appended to the tutor's system prompt: the dashboard
+ * figures plus the handful of cards that keep coming back.
+ *
+ * Best effort by design. It is context, not content — if either query fails the
+ * conversation should still happen, just without the personalisation, so the
+ * caller gets `undefined` rather than an exception.
+ */
+async function getLearnerState(now: Date = new Date()): Promise<string | undefined> {
+  try {
+    const userId = await requireUserId();
+    const [stats, lapsedResult] = await Promise.all([
+      getDashboard(now),
+      supabase
+        .from('user_cards')
+        .select('lapses, cards(sr_cyr, en)')
+        .eq('user_id', userId)
+        .gt('lapses', 0)
+        .order('lapses', { ascending: false })
+        .limit(LEARNER_STATE_WORDS)
+        .returns<LapsedJoinRow[]>(),
+    ]);
+    if (lapsedResult.error) throw lapsedResult.error;
+
+    const lapsed: LapsedCard[] = [];
+    for (const row of lapsedResult.data ?? []) {
+      const card = Array.isArray(row.cards) ? row.cards[0] : row.cards;
+      if (!card) continue; // Should be unreachable: the FK guarantees a card.
+      lapsed.push({ sr_cyr: card.sr_cyr, en: card.en, lapses: row.lapses ?? 0 });
+    }
+
+    return formatLearnerState({ stats, lapsed });
+  } catch (error) {
+    console.warn('[chat] learner state unavailable', error);
+    return undefined;
+  }
+}
+
+/** The signed-in user's access token, for the streaming `tutor` call. */
+async function getAccessToken(): Promise<string> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const token = data.session?.access_token;
+  if (!token) throw new Error('Not signed in.');
+  return token;
+}
+
 export const api = {
   getSettings,
   updateSettings,
@@ -532,4 +645,8 @@ export const api = {
   generateCard,
   listDrillStats,
   recordDrillAttempts,
+  listChatMessages,
+  appendChatMessage,
+  getLearnerState,
+  getAccessToken,
 };

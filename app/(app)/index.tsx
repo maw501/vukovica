@@ -26,11 +26,9 @@ interface Activity {
   href: Href | null;
 }
 
-// Chat arrives in Task 10. Wiring it up is a one-line change here -- swap the
-// `null` for its href.
 const ACTIVITIES: Activity[] = [
   { cyr: 'Учи', en: 'Review', href: '/review' },
-  { cyr: 'Разговор', en: 'Chat with tutor', href: null },
+  { cyr: 'Разговор', en: 'Chat with tutor', href: '/chat' },
   { cyr: 'Ћирилица', en: 'Cyrillic trainer', href: '/trainer' },
   { cyr: 'Шпил', en: 'Deck', href: '/deck' },
 ];

@@ -8,18 +8,14 @@
  * exactly where our error code lives.
  */
 
+import { EdgeFunctionError } from '@/lib/errors';
 import { functionsUrl, supabase } from '@/lib/supabase';
 
-/** A non-2xx from an Edge Function, carrying its `{ error }` code. */
-export class EdgeFunctionError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-  ) {
-    super(`${status} ${code}`);
-    this.name = 'EdgeFunctionError';
-  }
-}
+// The error type and its user-facing wording live in `lib/errors.ts` — a module
+// with no imports, so `lib/chat.ts` can throw the same error without dragging
+// the Supabase client (and `react-native`) into a unit test. Re-exported here
+// because this is where every call site already looks for them.
+export { EdgeFunctionError, describeEdgeError } from '@/lib/errors';
 
 /**
  * POST `body` to `/functions/v1/<name>` as the signed-in user and return the
@@ -54,21 +50,4 @@ export async function callEdgeFunction<T>(name: string, body: unknown): Promise<
   }
 
   return (await response.json()) as T;
-}
-
-/**
- * A sentence to show the user for a failed Edge Function call. The wire codes
- * are for the log; this is for a person who just tapped a button.
- */
-export function describeEdgeError(error: unknown): string {
-  if (error instanceof EdgeFunctionError) {
-    if (error.status === 401) return 'Your session has expired. Sign in again.';
-    if (error.status === 502) {
-      return 'The AI service could not be reached. Check the server’s API key, or fill the card in by hand.';
-    }
-    if (error.status >= 500) return 'The server had a problem. Try again in a moment.';
-    return 'That request was rejected. Check what you typed and try again.';
-  }
-  if (error instanceof Error && error.message) return error.message;
-  return 'Something went wrong. Try again.';
 }
