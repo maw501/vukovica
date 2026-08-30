@@ -3,11 +3,11 @@
  * Seed `public.cards` — the word deck — from the JSON files that hold it.
  *
  * Two sources, one table:
- *   data/seed-deck.json          the 681-card starter deck
  *   data/phase3/ghmily-vocab.json  43 cards for the first book Mark reads with
  *                                  his son, so tapping a word in "Погоди
  *                                  колико те волим" finds a gloss the app owns
  *                                  rather than one it has to ask a model for.
+ *   data/seed-deck.json          the 681-card starter deck
  * Both files have the same shape (`data/phase3/README.md`), so both go through
  * the same insert. Neither sets `kind`; the column defaults to 'word', which is
  * what keeps these rows out of the letters deck (the alphabet is seeded by
@@ -18,12 +18,17 @@
  * `ignoreDuplicates`, i.e. `on conflict (sr_cyr) do nothing`, so re-running
  * adds new cards without touching (or duplicating) the ones already there.
  *
- * Order matters a little. `api.fetchNewCards` hands out unseen cards in
- * `created_at` order, so a source seeded later queues behind one seeded
- * earlier. The starter deck goes first because it is the beginner path
- * (family, then baby, then home); the book's vocabulary is reachable from the
- * reader's gloss sheet from the moment it lands, whatever its place in the
- * review queue.
+ * Order is the point of the array below. `api.fetchNewCards` hands out unseen
+ * cards in `created_at` order, so a source seeded later queues behind one
+ * seeded earlier — the order here *is* the order the first weeks of new cards
+ * arrive in. The book's vocabulary goes first: reading "Погоди колико те
+ * волим" with his son is the stated first goal, and 43 cards is about a
+ * fortnight, so the fortnight is spent on the book's own words rather than
+ * reaching them 681 cards later. The starter deck follows, and is still the
+ * beginner path (family, then baby, then home) from there on.
+ *
+ * This only decides the order of cards that are *new*. On a database already
+ * seeded, `created_at` is already set and re-running changes nothing.
  *
  * Usage:
  *   npm run db:seed          # node --env-file=.env.local scripts/seed.mjs
@@ -48,8 +53,8 @@ const repoRoot = path.join(scriptDir, '..');
 
 /** The card files, in the order they should reach the new-card queue. */
 const SOURCES = [
-  { label: 'starter deck', file: path.join(repoRoot, 'data', 'seed-deck.json') },
   { label: 'GHMILY vocabulary', file: path.join(repoRoot, 'data', 'phase3', 'ghmily-vocab.json') },
+  { label: 'starter deck', file: path.join(repoRoot, 'data', 'seed-deck.json') },
 ];
 
 function requireEnv(name) {

@@ -169,15 +169,15 @@ describe('the GHMILY vocabulary', () => {
 });
 
 describe('the deck seed script', () => {
-  it('seeds both card files, the starter deck first', () => {
-    // The script reads its sources by path, so this is the only thing that
-    // notices if the book's vocabulary stops being loaded — or if it is loaded
-    // ahead of the starter deck, which would put 43 book words in front of
-    // мама and тата in the new-card queue.
-    const deckAt = seedScript.indexOf("'seed-deck.json'");
+  it("seeds both card files, the book's vocabulary first", () => {
+    // Seeding order is queue order (`api.fetchNewCards` sorts on `created_at`),
+    // so this is the only thing that notices if the book's 43 words stop coming
+    // first — which would push reading "Погоди колико те волим" with his son,
+    // the stated first goal, 681 cards down the queue.
     const vocabAt = seedScript.indexOf("'ghmily-vocab.json'");
-    expect(deckAt).toBeGreaterThan(-1);
-    expect(vocabAt).toBeGreaterThan(deckAt);
+    const deckAt = seedScript.indexOf("'seed-deck.json'");
+    expect(vocabAt).toBeGreaterThan(-1);
+    expect(deckAt).toBeGreaterThan(vocabAt);
   });
 
   it('lets both files land in the word deck by leaving `kind` to its default', () => {

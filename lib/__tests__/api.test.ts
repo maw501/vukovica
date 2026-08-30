@@ -9,7 +9,12 @@ import { describe, expect, it, vi } from 'vitest';
  */
 vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
-const { isMissingStoriesTable } = await import('@/lib/api');
+const { isMissingStoriesTable, pickCard } = await import('@/lib/api');
+type CardRow = Parameters<typeof pickCard>[0][number];
+
+/** A card row with only the fields `pickCard` looks at filled in. */
+const card = (sr_cyr: string, en: string): CardRow =>
+  ({ id: sr_cyr, sr_cyr, en }) as CardRow;
 
 /**
  * The `stories` table arrives with the graded reader later in this phase, so
@@ -72,5 +77,42 @@ describe('isMissingStoriesTable', () => {
   it('is false for an empty or absent error shape', () => {
     expect(isMissingStoriesTable({})).toBe(false);
     expect(isMissingStoriesTable({ code: '', message: '' })).toBe(false);
+  });
+});
+
+/**
+ * Which card a tapped word resolves to, once `ilike` has handed back everything
+ * that matches case-insensitively. Pure, so the preference is pinned here
+ * rather than left to whichever row Postgres happened to return first.
+ */
+describe('pickCard', () => {
+  it('prefers the exactly-cased card — Месец the moon over месец the month', () => {
+    const rows = [card('месец', 'month'), card('Месец', 'moon')];
+
+    expect(pickCard(rows, 'Месец')?.en).toBe('moon');
+    expect(pickCard(rows, 'месец')?.en).toBe('month');
+
+    // Order of the rows must not decide it, either way round.
+    const flipped = [...rows].reverse();
+    expect(pickCard(flipped, 'Месец')?.en).toBe('moon');
+    expect(pickCard(flipped, 'месец')?.en).toBe('month');
+  });
+
+  it('falls back to a differently-cased card — Мама at the start of a sentence', () => {
+    // The deck stores the headword lowercase; the story capitalises it because
+    // it opens the line. Same word, and the tap has to find it.
+    const rows = [card('мама', 'mum')];
+    expect(pickCard(rows, 'Мама')?.en).toBe('mum');
+  });
+
+  it('ignores surrounding whitespace on both sides of the comparison', () => {
+    expect(pickCard([card('  кућа ', 'house')], ' кућа ')?.en).toBe('house');
+  });
+
+  it('is null when nothing actually matches', () => {
+    // `ilike` treats `%` and `_` as wildcards, so a row can come back that is
+    // not the word at all. That is exactly what this rejects.
+    expect(pickCard([card('мама', 'mum')], 'тата')).toBeNull();
+    expect(pickCard([], 'мама')).toBeNull();
   });
 });

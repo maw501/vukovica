@@ -106,7 +106,8 @@ export default function BooksScreen() {
       });
       if (result.canceled) return;
 
-      const picked = (result.assets ?? [])
+      const chosen = result.assets ?? [];
+      const picked = chosen
         .filter((asset) => typeof asset.base64 === 'string' && asset.base64.length > 0)
         .map((asset) => ({ base64: asset.base64 as string, mimeType: asset.mimeType }));
 
@@ -114,6 +115,24 @@ export default function BooksScreen() {
         setPickError('Those photos could not be read. Try choosing them again.');
         return;
       }
+
+      // Say so when only some of them survived. Page numbers come from position
+      // in this list, so a silent drop does not leave a gap — it renumbers
+      // everything after it, and the book reads as complete while missing a
+      // page in the middle. That is the one photo mistake you cannot spot later
+      // from the list, so it has to be said now, while the picker is still the
+      // thing on screen.
+      const dropped = chosen.length - picked.length;
+      if (dropped > 0) {
+        setPickError(
+          `${dropped} of ${chosen.length} photos could not be read and ${
+            dropped === 1 ? 'was' : 'were'
+          } left out — check the page count above, then add the missing ${
+            dropped === 1 ? 'one' : 'ones'
+          }.`,
+        );
+      }
+
       // Appended, not replaced: a long book is often photographed in two goes,
       // and picking again should add pages 9-16 rather than throw 1-8 away.
       setPhotos((previous) => [...previous, ...picked]);

@@ -1,5 +1,9 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
-  "rewrites": [{ "source": "/story/:id", "destination": "/story/%5Bid%5D" }]
+  "rewrites": [
+    { "source": "/story/:id", "destination": "/story/%5Bid%5D" },
+    { "source": "/book/:id", "destination": "/book/%5Bid%5D" },
+    { "source": "/grammar/:slug", "destination": "/grammar/%5Bslug%5D" }
+  ]
 }

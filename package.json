@@ -15,6 +15,7 @@
     "db:migrate": "npx supabase db push --local",
     "db:seed": "node --env-file=.env.local scripts/seed.mjs",
     "db:seed:user": "node --env-file=.env.local scripts/seed-user-content.mjs",
+    "db:audio": "node --env-file=.env.local scripts/generate-audio.mjs",
     "build:web": "expo export --platform web --output-dir dist --clear"
   },
   "dependencies": {

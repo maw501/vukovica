@@ -44,3 +44,4 @@ supabase/.env.local
 # agent scratch
 .superpowers/
 .playwright-mcp/
+.vercel

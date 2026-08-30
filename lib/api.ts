@@ -899,6 +899,10 @@ async function listStories(): Promise<StoryRow[]> {
     // `stories_user_created_idx`.
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
+    // `created_at` defaults to now(), and the four warm-up stories are seeded
+    // in one statement — so without a tiebreaker they come back in an order
+    // that can change per fetch.
+    .order('id', { ascending: true })
     .limit(MAX_ROWS)
     .returns<StoryRow[]>();
   if (error) throw error;
@@ -924,7 +928,32 @@ async function finishStory(id: string, now: Date = new Date()): Promise<StoryRow
 }
 
 /**
- * The deck's card for `word`, matched case-insensitively on `sr_cyr`, or null.
+ * Pick the card a tapped word meant, from the rows `ilike` brought back.
+ *
+ * Exactly-cased first, and only then case-insensitively. Case matters in
+ * exactly one pair of headwords, and it is one the reader meets on its first
+ * night: Месец, the moon, is a separate card from месец, the month (Serbian
+ * capitalises the celestial body). `ilike` cannot tell them apart, so without
+ * the first pass the tap would land on whichever row Postgres returned first.
+ *
+ * The fallback is what makes a sentence-initial capital still find its card —
+ * "Мама" at the start of a line is the same word as the deck's "мама".
+ *
+ * Pure, so the preference is testable without a database.
+ */
+export function pickCard(rows: readonly CardRow[], needle: string): CardRow | null {
+  const trimmed = needle.trim();
+  const lowered = trimmed.toLowerCase();
+  return (
+    rows.find((card) => card.sr_cyr.trim() === trimmed) ??
+    rows.find((card) => card.sr_cyr.trim().toLowerCase() === lowered) ??
+    null
+  );
+}
+
+/**
+ * The deck's card for `word`, or null. An exact match on `sr_cyr` wins; a
+ * differently-cased one is the fallback (`pickCard`).
  *
  * `ilike` gets the case-insensitivity, and the exact re-check in JS is what
  * makes it a *match* rather than a pattern: `%` and `_` are wildcards to
@@ -950,18 +979,7 @@ async function findCardByWord(word: string): Promise<CardRow | null> {
     .returns<CardRow[]>();
   if (error) throw error;
 
-  const rows = data ?? [];
-  // The exactly-cased card first. Case matters in exactly one pair of
-  // headwords, and it is one the reader meets on its first night: Месец, the
-  // moon, is a separate card from месец, the month (Serbian capitalises the
-  // celestial body). `ilike` cannot tell them apart, so without this the tap
-  // would land on whichever row Postgres returned first.
-  const lowered = needle.toLowerCase();
-  return (
-    rows.find((card) => card.sr_cyr.trim() === needle) ??
-    rows.find((card) => card.sr_cyr.trim().toLowerCase() === lowered) ??
-    null
-  );
+  return pickCard(data ?? [], needle);
 }
 
 // ---------------------------------------------------------------------------
@@ -1133,24 +1151,44 @@ async function createBookWithPhotos({
  * Undo a half-finished save: the uploaded objects, then the book row (whose
  * cascade takes any page rows with it).
  *
- * Every failure here is swallowed deliberately. This runs on the way out of a
- * `catch`, and the caller is about to be shown why the save failed — replacing
- * that with "cleanup failed" would trade a useful message for a useless one.
- * What is left behind if it does fail is a pending book with fewer pages than
- * it should have, which is visible in the list and can be deleted.
+ * No failure here is ever thrown. This runs on the way out of a `catch`, and
+ * the caller is about to be shown why the save failed — replacing that with
+ * "cleanup failed" would trade a useful message for a useless one.
+ *
+ * But the two halves are ordered, and the order is load-bearing: **the row is
+ * only deleted once the objects are really gone.** Storage failing and the row
+ * going anyway would leave photographs in the bucket that nothing in the
+ * database points at — invisible, unreachable, and impossible to clean up from
+ * the app. Keeping the row instead leaves a pending book with fewer pages than
+ * it should have, which the list shows and the user can delete, taking its
+ * objects with it. A visible orphan beats a hidden one.
+ *
+ * Both failure modes are reported: supabase-js returns storage and PostgREST
+ * errors in `{ error }` rather than throwing, so reading it is the only way to
+ * know either happened. `catch` stays for the transport-level throw.
  */
 async function discardBook(bookId: string, uploadedPaths: readonly string[]): Promise<void> {
-  try {
-    if (uploadedPaths.length > 0) {
-      await supabase.storage.from(BOOK_PHOTOS_BUCKET).remove([...uploadedPaths]);
+  let objectsGone = true;
+
+  if (uploadedPaths.length > 0) {
+    try {
+      const { error } = await supabase.storage
+        .from(BOOK_PHOTOS_BUCKET)
+        .remove([...uploadedPaths]);
+      if (error) throw error;
+    } catch (error) {
+      objectsGone = false;
+      console.warn('[books] could not remove the uploaded photos; keeping the book row', error);
     }
-  } catch {
-    // Deliberately ignored — see above.
   }
+
+  if (!objectsGone) return;
+
   try {
-    await supabase.from('books').delete().eq('id', bookId);
-  } catch {
-    // Deliberately ignored — see above.
+    const { error } = await supabase.from('books').delete().eq('id', bookId);
+    if (error) throw error;
+  } catch (error) {
+    console.warn('[books] could not delete the half-saved book row', error);
   }
 }
 
