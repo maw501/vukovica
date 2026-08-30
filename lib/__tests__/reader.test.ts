@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { EdgeFunctionError } from '@/lib/errors';
 import {
+  describeFinishError,
   describeGlossError,
   describeStoryError,
   parseGloss,
@@ -131,14 +132,34 @@ describe('tokenize', () => {
     expect(tokenize('1996')).toEqual([{ text: '1996', tappable: false }]);
   });
 
+  it('does not make a Latin word tappable — there is no Latin in this view', () => {
+    // The `story` function refuses to save a body containing Latin, so this
+    // cannot happen through the app. A body inserted by hand or restored from a
+    // backup can still carry one, and a tappable "Hello" would both break the
+    // premise of the screen and send a non-Serbian word to the gloss endpoint.
+    expect(tokenize('Hello')).toEqual([{ text: 'Hello', tappable: false }]);
+    expect(tappable(tokenize('Мама and беба'))).toEqual(['Мама', 'беба']);
+  });
+
+  it('does not make a MIXED-script word tappable either', () => {
+    // "бebа" — Cyrillic with a Latin `b` and `e` hidden in it. Glossing that
+    // would ask the model about a word that does not exist.
+    expect(tokenize('бebа')).toEqual([{ text: 'бebа', tappable: false }]);
+    // The same applies to a hyphenated compound with one Latin half.
+    expect(tokenize('црно-white')).toEqual([{ text: 'црно-white', tappable: false }]);
+  });
+
   it('returns nothing for an empty body and does not invent tokens for blanks', () => {
     expect(tokenize('')).toEqual([]);
     expect(tokenize('   ')).toEqual([{ text: '   ', tappable: false }]);
   });
 
-  it('makes every tappable token a word of letters (optionally hyphenated)', () => {
+  it('makes every tappable token a Cyrillic word (optionally hyphenated)', () => {
     for (const token of tokenize(STORY)) {
-      if (token.tappable) expect(token.text).toMatch(/^\p{L}+(?:-\p{L}+)*$/u);
+      if (token.tappable) {
+        expect(token.text).toMatch(/^\p{L}+(?:-\p{L}+)*$/u);
+        expect(token.text).toMatch(/^[\p{Script=Cyrillic}-]+$/u);
+      }
     }
     // And it really did find the words: the story's first sentence, in order.
     expect(tappable(tokenize(STORY)).slice(0, 6)).toEqual([
@@ -265,6 +286,28 @@ describe('describeGlossError', () => {
     expect(describeGlossError(new EdgeFunctionError(401, 'unauthorized'))).toMatch(/[Ss]ign in/);
     expect(describeGlossError(new EdgeFunctionError(400, 'word_required'))).toMatch(/rejected/i);
     expect(describeGlossError(new Error('offline'))).toBe('offline');
+  });
+});
+
+describe('describeFinishError', () => {
+  it('turns PostgREST’s “no rows returned” into something about the story', () => {
+    const message = describeFinishError({
+      code: 'PGRST116',
+      message: 'JSON object requested, multiple (or no) rows returned',
+      details: 'The result contains 0 rows',
+    });
+    expect(message).not.toMatch(/JSON|rows/i);
+    expect(message).toMatch(/no longer in your library/i);
+  });
+
+  it('keeps any other database message, which is the useful line', () => {
+    expect(
+      describeFinishError({ code: '42501', message: 'permission denied for table stories' }),
+    ).toBe('permission denied for table stories');
+  });
+
+  it('has something to say about a thrown thing with no message at all', () => {
+    expect(describeFinishError(undefined)).toMatch(/could not be saved/i);
   });
 });
 

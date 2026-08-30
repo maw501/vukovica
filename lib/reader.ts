@@ -8,15 +8,15 @@
  * imports nothing itself.
  */
 
-import { describeEdgeError, EdgeFunctionError } from '@/lib/errors';
+import { describeEdgeError, EdgeFunctionError, errorMessage } from '@/lib/errors';
 
 /**
  * One piece of a story body.
  *
- * `tappable` is true only for words — a run of letters, optionally hyphenated
- * (`црно-бела` is one word, not three tokens). Everything else — punctuation,
- * quotation marks, digits, spaces and newlines — is a token too, but not one
- * the reader can tap.
+ * `tappable` is true only for **Cyrillic** words — a run of letters, optionally
+ * hyphenated (`црно-бела` is one word, not three tokens). Everything else —
+ * punctuation, quotation marks, digits, spaces, newlines, and any word carrying
+ * a Latin letter — is a token too, but not one the reader can tap.
  */
 export interface Token {
   text: string;
@@ -32,6 +32,19 @@ const WHITESPACE = /\s+/y;
 /** Anything that is neither a word character nor whitespace: punctuation, digits. */
 const OTHER = /[^\s\p{L}]+/uy;
 
+/**
+ * A word made **entirely** of Cyrillic letters (and hyphens).
+ *
+ * The `story` function refuses to save a body with a Latin letter in it, so in
+ * practice every word is Cyrillic — but "in practice" is not a guarantee, and a
+ * body inserted by hand, restored from a backup, or written by some future
+ * loosening of that check must not produce a tappable Latin word in a view
+ * whose whole premise is that there is no Latin in it. A mixed-script word
+ * (`бebа`) is untappable too: it is a corruption, and glossing it would send
+ * the model a word that does not exist.
+ */
+const CYRILLIC_WORD = /^[\p{Script=Cyrillic}-]+$/u;
+
 /** True for the characters that end a sentence. */
 const SENTENCE_END = /[.!?…]/u;
 
@@ -46,6 +59,7 @@ const SENTENCE_END = /[.!?…]/u;
  *
  * Digits are deliberately *not* tappable: the story prompt spells numbers out,
  * and sending "1996" to the gloss endpoint would spend a model call on nothing.
+ * Neither is a word carrying a Latin letter — see `CYRILLIC_WORD`.
  */
 export function tokenize(body: string): Token[] {
   const tokens: Token[] = [];
@@ -57,7 +71,7 @@ export function tokenize(body: string): Token[] {
     // once — which is what makes the tiling lossless.
     const word = match(WORD, body, at);
     if (word !== null) {
-      tokens.push({ text: word, tappable: true });
+      tokens.push({ text: word, tappable: CYRILLIC_WORD.test(word) });
       at += word.length;
       continue;
     }
@@ -212,6 +226,27 @@ export function describeGlossError(error: unknown): string {
     return AI_UNREACHABLE;
   }
   return describeEdgeError(error);
+}
+
+/**
+ * PostgREST's code for "`.single()` asked for one row and got none". On an
+ * update under RLS it means the row is not there — or not his.
+ */
+const NO_ROWS_RETURNED = 'PGRST116';
+
+/**
+ * What to tell the reader when "Завршио сам" fails.
+ *
+ * Without this the screen would show PostgREST's own sentence — "JSON object
+ * requested, multiple (or no) rows returned" — which describes a serialisation
+ * decision, not the thing that happened to the person's story.
+ */
+export function describeFinishError(error: unknown): string {
+  const code = (error as { code?: unknown } | null | undefined)?.code;
+  if (code === NO_ROWS_RETURNED) {
+    return 'That story is no longer in your library, so it could not be marked read.';
+  }
+  return errorMessage(error, 'That could not be saved. Try again.');
 }
 
 /**

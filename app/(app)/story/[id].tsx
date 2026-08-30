@@ -30,7 +30,13 @@ import { api } from '@/lib/api';
 import { EMPTY_CARD_INPUT, type CardInput } from '@/lib/cardInput';
 import { describeEdgeError } from '@/lib/edge';
 import { errorMessage } from '@/lib/errors';
-import { describeGlossError, sentenceAt, tokenize, type Gloss } from '@/lib/reader';
+import {
+  describeFinishError,
+  describeGlossError,
+  sentenceAt,
+  tokenize,
+  type Gloss,
+} from '@/lib/reader';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import type { CardRow } from '@/lib/types';
 
@@ -200,7 +206,7 @@ export default function StoryScreen() {
 
           {finish.isError ? (
             <Text style={styles.error} testID="story-finish-error">
-              {errorMessage(finish.error, 'That could not be saved.')}
+              {describeFinishError(finish.error)}
             </Text>
           ) : null}
 

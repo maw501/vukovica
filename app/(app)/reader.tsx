@@ -47,7 +47,11 @@ export default function ReaderScreen() {
   if (composing) {
     return (
       <NewStory
-        defaultLevel={suggestedLevel(progress.data?.knownWords ?? 0)}
+        // null, not a guess: the picker says out loud that a level "suits how
+        // many words you know", and it must only say that when it knows.
+        suggested={progress.isSuccess ? suggestedLevel(progress.data.knownWords) : null}
+        suggestionFailed={progress.isError}
+        onRetrySuggestion={() => void progress.refetch()}
         onCancel={() => setComposing(false)}
         onCreated={() => setComposing(false)}
       />
@@ -187,23 +191,38 @@ function LevelBadge({ level }: { level: number }) {
 /**
  * The "Нова прича" form: which level, and optionally what about.
  *
+ * `suggested` is null until the vocabulary count is actually known (and stays
+ * null if it failed). The form works either way — the picker just opens on
+ * level 1 — but it never *claims* a level suits him on the strength of a
+ * `?? 0` fallback, which would tell a 600-word learner that level 1 is right
+ * for him and give no hint that anything had gone wrong.
+ *
+ * The chosen level is deliberately not seeded into state from `suggested`:
+ * state frozen at mount would ignore a count that lands a moment later. Until
+ * he picks one himself, the picker simply follows the suggestion.
+ *
  * Generation is the one thing here that can fail in a way the user must be told
  * about honestly — `describeStoryError` keeps the "check the key" wording off
  * the failures where the key is not the problem — so the error stays on screen
  * with the form filled in, ready to send again.
  */
 function NewStory({
-  defaultLevel,
+  suggested,
+  suggestionFailed,
+  onRetrySuggestion,
   onCancel,
   onCreated,
 }: {
-  defaultLevel: StoryLevel;
+  suggested: StoryLevel | null;
+  suggestionFailed: boolean;
+  onRetrySuggestion: () => void;
   onCancel: () => void;
   onCreated: () => void;
 }) {
   const queryClient = useQueryClient();
   const router = useRouter();
-  const [level, setLevel] = useState<StoryLevel>(defaultLevel);
+  const [chosen, setChosen] = useState<StoryLevel | null>(null);
+  const level: StoryLevel = chosen ?? suggested ?? 1;
   const [topic, setTopic] = useState('');
 
   const create = useMutation({
@@ -232,7 +251,7 @@ function NewStory({
                 level === option && styles.levelChipSelected,
                 pressed && styles.pressed,
               ]}
-              onPress={() => setLevel(option)}
+              onPress={() => setChosen(option)}
               accessibilityRole="button"
               accessibilityState={{ selected: level === option }}
               testID={`new-story-level-${option}`}
@@ -246,11 +265,32 @@ function NewStory({
             </Pressable>
           ))}
         </View>
-        <Text style={styles.muted} testID="new-story-suggestion">
-          {defaultLevel === level
-            ? `Level ${defaultLevel} suits how many words you know.`
-            : `Suggested for you: level ${defaultLevel}.`}
-        </Text>
+        {suggested !== null ? (
+          <Text style={styles.muted} testID="new-story-suggestion">
+            {suggested === level
+              ? `Level ${suggested} suits how many words you know.`
+              : `Suggested for you: level ${suggested}.`}
+          </Text>
+        ) : suggestionFailed ? (
+          <View style={styles.suggestionUnknown} testID="new-story-suggestion-error">
+            <Text style={styles.muted}>
+              Could not check how many words you know, so there is no suggestion — pick the level
+              you feel like reading.
+            </Text>
+            <Pressable
+              style={styles.textButton}
+              onPress={onRetrySuggestion}
+              accessibilityRole="button"
+              testID="new-story-suggestion-retry"
+            >
+              <Text style={styles.textButtonLabel}>Try again</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <Text style={styles.muted} testID="new-story-suggestion-pending">
+            Working out which level suits you…
+          </Text>
+        )}
 
         <Text style={styles.fieldLabel}>What about? (optional)</Text>
         <TextInput
@@ -368,6 +408,7 @@ const styles = StyleSheet.create({
   levelChipCyr: { fontSize: 17, fontWeight: '600', color: colors.text },
   levelChipBlurb: { fontSize: 13, color: colors.textMuted },
   levelChipTextOn: { color: colors.primaryOn },
+  suggestionUnknown: { gap: spacing.xs },
   input: {
     minHeight: touchTarget,
     borderWidth: 1,
