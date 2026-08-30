@@ -227,12 +227,12 @@ survives the next build:
 {
   "cleanUrls": true,
   "trailingSlash": false,
-  "rewrites": [{ "source": "/story/(.*)", "destination": "/story/[id].html" }]
+  "rewrites": [{ "source": "/story/:id", "destination": "/story/%5Bid%5D" }]
 }
 ```
 
 Then check it on the live site before you call the deploy done: open a story,
-**reload the page**, and confirm the story comes back rather than a 404.
+**reload the page**, and confirm the story comes back rather than a 404. (The destination is the URL-encoded literal filename with no extension: a bracketed or .html destination silently fails to match on Vercel — verified live.)
 
 The file is already in place, verified to survive `build:web` into
 `dist/vercel.json` unchanged — the live-site reload check above is still the
