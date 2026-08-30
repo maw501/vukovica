@@ -4,7 +4,7 @@ import { z } from 'zod';
 
 import { getAuthenticatedUser, createServiceClient } from '../_shared/auth.ts';
 import { corsHeaders, errorResponse, jsonHeaders } from '../_shared/cors.ts';
-import { CYRILLIC_LINE } from '../_shared/cyrillic.ts';
+import { isCyrillicLine } from '../_shared/cyrillic.ts';
 import {
   CARD_DOMAINS,
   buildExamplePrompt,
@@ -19,11 +19,10 @@ const ExampleSchema = z.object({
   example_en: z.string(),
 });
 
-// The reader's tap-to-gloss sheet. `base_form_cyr` seeds the new_card flow, so
-// a Latin-script or transliterated base form would head a card with the wrong
-// script entirely -- the regex makes that a rejected generation, not a bad card.
+// The reader's tap-to-gloss sheet. Plain strings on purpose: the Cyrillic rule
+// is enforced after generation, not here -- see the handler for why.
 const GlossSchema = z.object({
-  base_form_cyr: z.string().regex(CYRILLIC_LINE),
+  base_form_cyr: z.string(),
   en: z.string(),
   note: z.string(),
 });
@@ -81,7 +80,44 @@ serve(async (req: Request) => {
   const serviceClient = createServiceClient();
 
   try {
-    // All three modes are one small structured generation on the fast model.
+    // Gloss is handled apart from the other two because its output is checked
+    // after generation rather than by its schema. The script rule cannot live
+    // in the zod object: a refinement failure throws inside generateObject and
+    // surfaces as `provider_error`, which is the SAME code a missing API key
+    // returns -- so the reader would tell the user "gloss needs the AI key"
+    // when the truth is that the model transliterated. Distinguishable failure
+    // modes need distinguishable codes, so this mirrors the story path.
+    if (mode === 'gloss') {
+      const result = await generateObject({
+        model: vuk('fast'),
+        schema: GlossSchema,
+        prompt: buildGlossPrompt(word, sentence),
+        maxTokens: 400,
+      });
+
+      logUsage(serviceClient, {
+        userId: user.id,
+        surface: mode,
+        model: MODEL_IDS.fast,
+        usage: extractUsage(result),
+      });
+
+      // `base_form_cyr` seeds the new_card flow, so a Latin-script base form
+      // would head a deck card in the wrong script entirely.
+      const base_form_cyr = result.object.base_form_cyr.trim();
+      if (!isCyrillicLine(base_form_cyr)) {
+        console.error('[generate] gloss base form is not Cyrillic; rejected', {
+          userId: user.id,
+          word,
+        });
+        return errorResponse(502, 'invalid_gloss');
+      }
+
+      return new Response(JSON.stringify({ ...result.object, base_form_cyr }), {
+        headers: jsonHeaders,
+      });
+    }
+
     // Spelled out per mode rather than shared: the schema type is what makes
     // `result.object` typed, and hoisting it out erases that.
     const result =
@@ -92,19 +128,12 @@ serve(async (req: Request) => {
             prompt: buildExamplePrompt(subject),
             maxTokens: 400,
           })
-        : mode === 'new_card'
-          ? await generateObject({
-              model: vuk('fast'),
-              schema: CardSchema,
-              prompt: buildNewCardPrompt(subject),
-              maxTokens: 500,
-            })
-          : await generateObject({
-              model: vuk('fast'),
-              schema: GlossSchema,
-              prompt: buildGlossPrompt(word, sentence),
-              maxTokens: 400,
-            });
+        : await generateObject({
+            model: vuk('fast'),
+            schema: CardSchema,
+            prompt: buildNewCardPrompt(subject),
+            maxTokens: 500,
+          });
 
     logUsage(serviceClient, {
       userId: user.id,

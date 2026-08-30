@@ -44,10 +44,14 @@ const PUNCTUATION = [
 
 /**
  * One line of Cyrillic — a title, or a single word. No newlines.
- * Exported so a zod schema can enforce the same rule with `.regex()`; it has no
- * `g` flag, so it holds no state and is safe to share.
+ *
+ * Deliberately NOT exported for use inside a zod schema. A schema refinement
+ * that fails throws inside `generateObject`, which callers cannot tell apart
+ * from a provider outage; both surface as `provider_error`. Callers check the
+ * generated value with `isCyrillicLine` afterwards instead, so a model writing
+ * Latin gets its own error code.
  */
-export const CYRILLIC_LINE = new RegExp(`^[${LETTERS}${PUNCTUATION}]+$`);
+const CYRILLIC_LINE = new RegExp(`^[${LETTERS}${PUNCTUATION}]+$`);
 
 /** Running Cyrillic prose — a story body. Newlines separate its paragraphs. */
 const PROSE = new RegExp(`^[${LETTERS}${PUNCTUATION}\\r\\n]+$`);

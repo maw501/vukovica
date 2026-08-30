@@ -6,8 +6,10 @@ import { createOpenAI } from '@ai-sdk/openai';
  * Semantic model aliases. Swapping providers is a change to this file plus the
  * `AI_PROVIDER` env var — no call site names a concrete model.
  *
- *   chat -> conversational tutor replies (streamed)
- *   fast -> structured generation (example sentences, new cards)
+ *   chat -> the work worth the better model: streamed tutor replies, and the
+ *           graded reader's stories (they are the product, not a helper)
+ *   fast -> small structured generations: example sentences, new cards, and
+ *           the reader's word glosses
  */
 export type ModelAlias = 'chat' | 'fast';
 

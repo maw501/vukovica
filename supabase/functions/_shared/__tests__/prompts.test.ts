@@ -178,6 +178,16 @@ describe('buildStoryPrompt', () => {
     expect(prompt).toMatch(/children's stor/i);
   });
 
+  it('tells the model to spell numbers out rather than use digits', () => {
+    // Not cosmetic: the server-side script guard rejects digits outright, so a
+    // story containing "3" is a 502 and a wasted model call. If this
+    // instruction ever silently disappears from the prompt, the only symptom
+    // would be stories intermittently failing to generate.
+    const prompt = buildStoryPrompt(2, KNOWN);
+    expect(prompt).toMatch(/spell any numbers out/i);
+    expect(prompt).toMatch(/do not use digits/i);
+  });
+
   it('gives level 1 its own band and no other level\'s', () => {
     const prompt = buildStoryPrompt(1, KNOWN);
     expect(prompt).toContain('40 to 80');
