@@ -40,6 +40,7 @@ function card(srCyr: string, id = srCyr): CardRow {
     example_en: 'This is a word.',
     domain: 'core',
     audio_path: null,
+    kind: 'word',
     created_by: null,
     created_at: null,
   };

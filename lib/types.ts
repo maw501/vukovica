@@ -1,7 +1,7 @@
 /**
- * Hand-written row types mirroring `supabase/migrations/20260829120000_schema.sql`.
+ * Hand-written row types mirroring the migrations in `supabase/migrations/`.
  *
- * No codegen dependency in the MVP: if you change the migration, change this
+ * No codegen dependency in the MVP: if you change a migration, change this
  * file in the same commit. Conventions:
  *   - `timestamptz` is surfaced as an ISO-8601 `string` (what PostgREST returns).
  *   - `bigint` identity columns are surfaced as `number` (JSON numbers; our row
@@ -16,6 +16,23 @@ export type CardState = 'new' | 'learning' | 'review' | 'relearning';
 /** `chat_messages.role`. */
 export type ChatRole = 'user' | 'assistant';
 
+/**
+ * `cards.kind` — which deck a card belongs to. The two never mix in one review
+ * session: the review screen filters on it and the dashboard counts each deck's
+ * due cards separately.
+ */
+export type CardKind = 'word' | 'letter';
+
+/** `xp_events.kind` — what earned the XP. */
+export type XpKind =
+  | 'review'
+  | 'drill'
+  | 'grammar'
+  | 'story'
+  | 'book_page'
+  | 'book_finish'
+  | 'request';
+
 /** A row of `public.cards` — the shared deck. */
 export interface CardRow {
   id: string;
@@ -27,7 +44,9 @@ export interface CardRow {
   example_cyr: string;
   example_en: string;
   domain: string;
+  /** A path in the public `audio` bucket, filled by the offline batch script. */
   audio_path: string | null;
+  kind: CardKind;
   /** null for seed cards; otherwise the user who added the card. */
   created_by: string | null;
   created_at: string | null;
@@ -107,6 +126,107 @@ export interface StoryRow {
   created_at: string | null;
   /** null = unread. Set when the reader taps "Завршио сам". */
   finished_at: string | null;
+}
+
+/**
+ * A row of `public.books` — a book Mark is reading with his son.
+ *
+ * Mirrors `supabase/migrations/20260830150000_phase3_schema.sql`.
+ */
+export interface BookRow {
+  id: string;
+  user_id: string;
+  title_en: string;
+  title_cyr: string | null;
+  /** 'pending' until the pages have text; photographed books start pending. */
+  status: 'pending' | 'ready';
+  /** 'claude' = a Claude-authored rendering, 'photos' = built from photographs. */
+  source: 'claude' | 'photos';
+  /** null = unread. Set when the reader taps "Finished". */
+  finished_at: string | null;
+  created_at: string | null;
+}
+
+/** A row of `public.book_pages` — the pages of a book, ordered by `page_no`. */
+export interface BookPageRow {
+  id: string;
+  book_id: string;
+  user_id: string;
+  page_no: number;
+  /** null while the book is pending transcription. */
+  text_cyr: string | null;
+  /** A path in the private `book-photos` bucket; null for a Claude rendering. */
+  photo_path: string | null;
+  created_at: string | null;
+}
+
+/**
+ * A row of `public.requests` — the capture queue.
+ *
+ * Filed from the quick-add box or from a reading view, and fulfilled offline:
+ * the answer arrives as a card, with `card_id` pointing at it and `status`
+ * flipped to 'done'.
+ */
+export interface RequestRow {
+  id: string;
+  user_id: string;
+  /** What Mark typed, or the tapped word plus its sentence. */
+  text_en: string;
+  source: 'typed' | 'reader';
+  status: 'pending' | 'done';
+  /** The card that answered the request; null while pending. */
+  card_id: string | null;
+  note: string | null;
+  created_at: string | null;
+  done_at: string | null;
+}
+
+/**
+ * A row of `public.grammar_topics` — global seeded content, no owner.
+ * Readable by any authenticated user; written only with the service role.
+ */
+export interface GrammarTopicRow {
+  id: string;
+  slug: string;
+  title_en: string;
+  /** A short English explanation with Serbian examples. */
+  explain_md: string;
+  sort: number;
+}
+
+/** A row of `public.grammar_items` — one drill item. Global content, as above. */
+export interface GrammarItemRow {
+  id: string;
+  topic_id: string;
+  prompt: string;
+  /**
+   * The canonical answer. A Latin-typed answer is accepted by transliterating
+   * the input before comparing, so no second accepted-forms column is stored.
+   */
+  answer_cyr: string;
+  note: string | null;
+  sort: number;
+}
+
+/** A row of `public.grammar_stats` — per-topic accuracy, one row per user. */
+export interface GrammarStatRow {
+  user_id: string;
+  topic_id: string;
+  attempts: number;
+  correct: number;
+  updated_at: string | null;
+}
+
+/**
+ * A row of `public.xp_events` — the append-only XP ledger. Total, level and
+ * today's ring are sums over this table, never stored counters.
+ */
+export interface XpEventRow {
+  id: string;
+  user_id: string;
+  amount: number;
+  kind: XpKind;
+  created_at: string | null;
 }
 
 /** A row of `public.settings` — one per user. */
