@@ -58,8 +58,10 @@ enabled = true
 schema_paths = []
 
 [db.seed]
-# If enabled, seeds the database after migrations during a db reset.
-enabled = true
+# Off: the card deck is seeded by `npm run db:seed` (scripts/seed.mjs), which
+# reads data/seed-deck.json and runs against hosted projects too. Leaving this
+# on only makes `supabase db reset` warn about a seed.sql that will never exist.
+enabled = false
 # Specifies an ordered list of seed files to load during db reset.
 # Supports glob patterns relative to supabase directory: "./seeds/*.sql"
 sql_paths = ["./seed.sql"]

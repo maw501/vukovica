@@ -7,7 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "expo start",
+    "dev": "npx supabase start && expo start",
     "web": "expo start --web",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
