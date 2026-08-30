@@ -1,0 +1,212 @@
+[
+  {
+    "cyr_pair": "А а",
+    "lat_pair": "A a",
+    "en": "a as in father, short and open — мама (mum)",
+    "example_cyr": "мама",
+    "sort": 1
+  },
+  {
+    "cyr_pair": "Б б",
+    "lat_pair": "B b",
+    "en": "b as in book — беба (baby)",
+    "example_cyr": "беба",
+    "sort": 2
+  },
+  {
+    "cyr_pair": "В в",
+    "lat_pair": "V v",
+    "en": "v as in van — вода (water)",
+    "example_cyr": "вода",
+    "sort": 3
+  },
+  {
+    "cyr_pair": "Г г",
+    "lat_pair": "G g",
+    "en": "g as in go, always hard — година (year)",
+    "example_cyr": "година",
+    "sort": 4
+  },
+  {
+    "cyr_pair": "Д д",
+    "lat_pair": "D d",
+    "en": "d as in dog — дете (child)",
+    "example_cyr": "дете",
+    "sort": 5
+  },
+  {
+    "cyr_pair": "Ђ ђ",
+    "lat_pair": "Đ đ",
+    "en": "soft j, like the 'd y' in would you; the voiced partner of Ћ — ђубре (rubbish)",
+    "example_cyr": "ђубре",
+    "sort": 6
+  },
+  {
+    "cyr_pair": "Е е",
+    "lat_pair": "E e",
+    "en": "e as in bed, never a diphthong — вече (evening)",
+    "example_cyr": "вече",
+    "sort": 7
+  },
+  {
+    "cyr_pair": "Ж ж",
+    "lat_pair": "Ž ž",
+    "en": "zh, like the s in measure — жена (wife, woman)",
+    "example_cyr": "жена",
+    "sort": 8
+  },
+  {
+    "cyr_pair": "З з",
+    "lat_pair": "Z z",
+    "en": "z as in zoo — зима (winter)",
+    "example_cyr": "зима",
+    "sort": 9
+  },
+  {
+    "cyr_pair": "И и",
+    "lat_pair": "I i",
+    "en": "ee as in see, short — име (name)",
+    "example_cyr": "име",
+    "sort": 10
+  },
+  {
+    "cyr_pair": "Ј ј",
+    "lat_pair": "J j",
+    "en": "y as in yes, never the English j — јаје (egg)",
+    "example_cyr": "јаје",
+    "sort": 11
+  },
+  {
+    "cyr_pair": "К к",
+    "lat_pair": "K k",
+    "en": "k as in key, no puff of air — кућа (house)",
+    "example_cyr": "кућа",
+    "sort": 12
+  },
+  {
+    "cyr_pair": "Л л",
+    "lat_pair": "L l",
+    "en": "l as in leaf, light and clear — лето (summer)",
+    "example_cyr": "лето",
+    "sort": 13
+  },
+  {
+    "cyr_pair": "Љ љ",
+    "lat_pair": "Lj lj",
+    "en": "ly, like the lli in million — љут (angry)",
+    "example_cyr": "љут",
+    "sort": 14
+  },
+  {
+    "cyr_pair": "М м",
+    "lat_pair": "M m",
+    "en": "m as in mum — млеко (milk)",
+    "example_cyr": "млеко",
+    "sort": 15
+  },
+  {
+    "cyr_pair": "Н н",
+    "lat_pair": "N n",
+    "en": "n as in nose — нож (knife)",
+    "example_cyr": "нож",
+    "sort": 16
+  },
+  {
+    "cyr_pair": "Њ њ",
+    "lat_pair": "Nj nj",
+    "en": "ny, like the ni in onion — књига (book)",
+    "example_cyr": "књига",
+    "sort": 17
+  },
+  {
+    "cyr_pair": "О о",
+    "lat_pair": "O o",
+    "en": "o as in more, short and pure — отац (father)",
+    "example_cyr": "отац",
+    "sort": 18
+  },
+  {
+    "cyr_pair": "П п",
+    "lat_pair": "P p",
+    "en": "p as in pen, no puff of air — пелена (nappy)",
+    "example_cyr": "пелена",
+    "sort": 19
+  },
+  {
+    "cyr_pair": "Р р",
+    "lat_pair": "R r",
+    "en": "rolled r, tapped like the Spanish r; between consonants it becomes the vowel of the syllable, as in прст (finger) — риба (fish)",
+    "example_cyr": "риба",
+    "sort": 20
+  },
+  {
+    "cyr_pair": "С с",
+    "lat_pair": "S s",
+    "en": "s as in sun, never a z sound — син (son)",
+    "example_cyr": "син",
+    "sort": 21
+  },
+  {
+    "cyr_pair": "Т т",
+    "lat_pair": "T t",
+    "en": "t as in top, no puff of air — тата (dad)",
+    "example_cyr": "тата",
+    "sort": 22
+  },
+  {
+    "cyr_pair": "Ћ ћ",
+    "lat_pair": "Ć ć",
+    "en": "soft ch, like the 't y' in not yet, lighter than Ч — ћерка (daughter)",
+    "example_cyr": "ћерка",
+    "sort": 23
+  },
+  {
+    "cyr_pair": "У у",
+    "lat_pair": "U u",
+    "en": "oo as in boot, short — ујак (uncle)",
+    "example_cyr": "ујак",
+    "sort": 24
+  },
+  {
+    "cyr_pair": "Ф ф",
+    "lat_pair": "F f",
+    "en": "f as in fish — флашица (baby bottle)",
+    "example_cyr": "флашица",
+    "sort": 25
+  },
+  {
+    "cyr_pair": "Х х",
+    "lat_pair": "H h",
+    "en": "h scraped at the back of the throat, like the ch in Scottish loch but much lighter — хлеб (bread)",
+    "example_cyr": "хлеб",
+    "sort": 26
+  },
+  {
+    "cyr_pair": "Ц ц",
+    "lat_pair": "C c",
+    "en": "ts as in cats, never a k sound — црвен (red)",
+    "example_cyr": "црвен",
+    "sort": 27
+  },
+  {
+    "cyr_pair": "Ч ч",
+    "lat_pair": "Č č",
+    "en": "hard ch as in church, tongue drawn back, heavier than Ћ — чај (tea)",
+    "example_cyr": "чај",
+    "sort": 28
+  },
+  {
+    "cyr_pair": "Џ џ",
+    "lat_pair": "Dž dž",
+    "en": "hard j as in judge, the voiced pair of Ч — џем (jam)",
+    "example_cyr": "џем",
+    "sort": 29
+  },
+  {
+    "cyr_pair": "Ш ш",
+    "lat_pair": "Š š",
+    "en": "sh as in shop — шећер (sugar)",
+    "example_cyr": "шећер",
+    "sort": 30
+  }
+]

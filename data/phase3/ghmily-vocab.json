@@ -1,0 +1,432 @@
+[
+  {
+    "sr_cyr": "зец",
+    "en": "hare; rabbit",
+    "pos": "noun",
+    "gender": "m",
+    "aspect": null,
+    "example_cyr": "Мали зец седи у трави.",
+    "example_en": "The little hare is sitting in the grass.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "зека",
+    "en": "bunny (affectionate)",
+    "pos": "noun",
+    "gender": "m",
+    "aspect": null,
+    "example_cyr": "Мој мали зека већ спава.",
+    "example_en": "My little bunny is already asleep.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "Месец",
+    "en": "the moon",
+    "pos": "noun",
+    "gender": "m",
+    "aspect": null,
+    "example_cyr": "Месец сија изнад реке.",
+    "example_en": "The moon is shining above the river.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "уши",
+    "en": "ears",
+    "pos": "noun",
+    "gender": "f",
+    "aspect": null,
+    "example_cyr": "Зец има дугачке уши.",
+    "example_en": "The hare has long ears.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "рука",
+    "en": "arm; hand",
+    "pos": "noun",
+    "gender": "f",
+    "aspect": null,
+    "example_cyr": "Твоја рука је већа од моје.",
+    "example_en": "Your arm is bigger than mine.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "нога",
+    "en": "leg; foot",
+    "pos": "noun",
+    "gender": "f",
+    "aspect": null,
+    "example_cyr": "Нога ми је уморна.",
+    "example_en": "My leg is tired.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "око",
+    "en": "eye",
+    "pos": "noun",
+    "gender": "n",
+    "aspect": null,
+    "example_cyr": "Мали зец затвара једно око.",
+    "example_en": "The little hare closes one eye.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "река",
+    "en": "river",
+    "pos": "noun",
+    "gender": "f",
+    "aspect": null,
+    "example_cyr": "Река тече поред брда.",
+    "example_en": "The river flows past the hill.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "брдо",
+    "en": "hill",
+    "pos": "noun",
+    "gender": "n",
+    "aspect": null,
+    "example_cyr": "Иза куће је високо брдо.",
+    "example_en": "Behind the house there is a high hill.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "стаза",
+    "en": "path; lane",
+    "pos": "noun",
+    "gender": "f",
+    "aspect": null,
+    "example_cyr": "Трчимо низ дугачку стазу.",
+    "example_en": "We run down the long lane.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "трава",
+    "en": "grass",
+    "pos": "noun",
+    "gender": "f",
+    "aspect": null,
+    "example_cyr": "Трава је мека и зелена.",
+    "example_en": "The grass is soft and green.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "дрво",
+    "en": "tree; wood",
+    "pos": "noun",
+    "gender": "n",
+    "aspect": null,
+    "example_cyr": "Иза брда расте велико дрво.",
+    "example_en": "A big tree grows behind the hill.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "грана",
+    "en": "branch",
+    "pos": "noun",
+    "gender": "f",
+    "aspect": null,
+    "example_cyr": "Грана је високо изнад нас.",
+    "example_en": "The branch is high above us.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "небо",
+    "en": "sky",
+    "pos": "noun",
+    "gender": "n",
+    "aspect": null,
+    "example_cyr": "Небо је пуно звезда.",
+    "example_en": "The sky is full of stars.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "сан",
+    "en": "sleep; dream",
+    "pos": "noun",
+    "gender": "m",
+    "aspect": null,
+    "example_cyr": "Мали зец тоне у сан.",
+    "example_en": "The little hare is drifting off to sleep.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "загрљај",
+    "en": "hug; embrace",
+    "pos": "noun",
+    "gender": "m",
+    "aspect": null,
+    "example_cyr": "Твој загрљај је најтоплији.",
+    "example_en": "Your hug is the warmest.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "скакати",
+    "en": "to hop, to jump (repeatedly)",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "impf",
+    "example_cyr": "Мали зец скаче по трави.",
+    "example_en": "The little hare is hopping in the grass.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "скочити",
+    "en": "to jump (once)",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Зец може да скочи веома високо.",
+    "example_en": "The hare can jump very high.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "испружити",
+    "en": "to stretch out",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Испружи руке колико можеш.",
+    "example_en": "Stretch your arms out as far as you can.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "раширити",
+    "en": "to spread wide",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Рашири руке и загрли ме.",
+    "example_en": "Spread your arms wide and hug me.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "подићи",
+    "en": "to lift, to raise",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Подигни руке изнад главе.",
+    "example_en": "Raise your arms above your head.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "држати",
+    "en": "to hold",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "impf",
+    "example_cyr": "Мали зец држи тату за уши.",
+    "example_en": "The little hare is holding dad by the ears.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "загрлити",
+    "en": "to hug",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Загрли ме пре спавања.",
+    "example_en": "Hug me before bedtime.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "шапутати",
+    "en": "to whisper",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "impf",
+    "example_cyr": "Тата шапуће лаку ноћ.",
+    "example_en": "Dad whispers good night.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "погодити",
+    "en": "to guess",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Погоди шта имам у руци.",
+    "example_en": "Guess what I have in my hand.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "колико",
+    "en": "how much; how many",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Колико волиш свог сина?",
+    "example_en": "How much do you love your son?",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "толико",
+    "en": "that much; so much",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Толико те волим.",
+    "example_en": "I love you that much.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "оволико",
+    "en": "this much (as much as this)",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Оволико те волим!",
+    "example_en": "I love you this much!",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "више",
+    "en": "more",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Волим те више од свега.",
+    "example_en": "I love you more than anything.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "највише",
+    "en": "most, the most",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Тебе волим највише.",
+    "example_en": "You are the one I love most.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "високо",
+    "en": "high (up)",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Зец скаче високо.",
+    "example_en": "The hare jumps high.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "далеко",
+    "en": "far",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Месец је далеко од нас.",
+    "example_en": "The moon is far away from us.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "увис",
+    "en": "upwards",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Мали зец диже руке увис.",
+    "example_en": "The little hare raises his arms upwards.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "назад",
+    "en": "back, backwards",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Идемо до реке и назад.",
+    "example_en": "We go to the river and back.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "преко",
+    "en": "across, over",
+    "pos": "preposition",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Идемо преко реке.",
+    "example_en": "We are going across the river.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "изнад",
+    "en": "above",
+    "pos": "preposition",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Месец је изнад брда.",
+    "example_en": "The moon is above the hill.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "широк",
+    "en": "wide, broad",
+    "pos": "adjective",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Његов загрљај је широк и топао.",
+    "example_en": "His hug is wide and warm.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "Погоди колико те волим.",
+    "en": "Guess how much I love you.",
+    "pos": "phrase",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Погоди колико те волим, каже мали зец.",
+    "example_en": "Guess how much I love you, says the little hare.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "Волим те до Месеца.",
+    "en": "I love you to the moon.",
+    "pos": "phrase",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Волим те до Месеца, шапуће тата.",
+    "example_en": "I love you to the moon, dad whispers.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "Волим те до Месеца и назад.",
+    "en": "I love you to the moon and back.",
+    "pos": "phrase",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Волим те до Месеца и назад, сине.",
+    "example_en": "I love you to the moon and back, son.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "Не могу да погодим.",
+    "en": "I can't guess.",
+    "pos": "phrase",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Не могу да погодим, каже велики зец.",
+    "example_en": "I can't guess, says the big hare.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "Лаку ноћ, мали зеко.",
+    "en": "Good night, little bunny.",
+    "pos": "phrase",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Лаку ноћ, мали зеко, спавај лепо.",
+    "example_en": "Good night, little bunny, sleep well.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "Спавај лепо.",
+    "en": "Sleep well.",
+    "pos": "phrase",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Спавај лепо, видимо се ујутру.",
+    "example_en": "Sleep well, see you in the morning.",
+    "domain": "ghmily"
+  }
+]
