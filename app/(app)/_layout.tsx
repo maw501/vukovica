@@ -48,6 +48,7 @@ export default function AppLayout() {
         <Stack.Screen name="deck" options={{ title: 'Deck' }} />
         <Stack.Screen name="trainer" options={{ title: 'Cyrillic trainer' }} />
         <Stack.Screen name="reader" options={{ title: 'Reader' }} />
+        <Stack.Screen name="books" options={{ title: 'Books' }} />
         <Stack.Screen name="requests" options={{ title: 'Requests' }} />
         <Stack.Screen name="grammar" options={{ title: 'Grammar' }} />
         {/* Title is set by the screen itself, to the topic's own name -- which
@@ -56,6 +57,9 @@ export default function AppLayout() {
         {/* Title is set by the screen itself, to the story's own Cyrillic one --
             that title is the content, not chrome. */}
         <Stack.Screen name="story/[id]" options={{ title: 'Story' }} />
+        {/* Title is set by the screen itself, to the book's own Cyrillic one --
+            that title is on the cover, so it is content too. */}
+        <Stack.Screen name="book/[id]" options={{ title: 'Book' }} />
       </Stack>
     </>
   );

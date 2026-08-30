@@ -5,6 +5,15 @@
  * Functions, so PostgREST and storage are the only two things this talks to.
  */
 
+import {
+  base64ToBytes,
+  bookTitleError,
+  cyrillicTitleError,
+  MAX_PHOTO_BYTES,
+  pageCountError,
+  photoContentType,
+  photoObjectPath,
+} from '@/lib/books';
 import { trimCardInput, type CardInput } from '@/lib/cardInput';
 import {
   BUMP_DRILL_STATS_FN,
@@ -32,6 +41,8 @@ import {
 } from '@/lib/streak';
 import { supabase } from '@/lib/supabase';
 import type {
+  BookPageRow,
+  BookRow,
   CardRow,
   DrillStatRow,
   GrammarItemRow,
@@ -944,6 +955,214 @@ async function findCardByWord(word: string): Promise<CardRow | null> {
 }
 
 // ---------------------------------------------------------------------------
+// Books
+// ---------------------------------------------------------------------------
+
+/** The private bucket every photographed page is uploaded to. */
+const BOOK_PHOTOS_BUCKET = 'book-photos';
+
+/**
+ * The library, newest first — pending and ready books together.
+ *
+ * One list rather than two filtered queries, for `listStories`'s reason: the
+ * books screen splits them, so a book transcribed between two visits moves
+ * sections without the two ever disagreeing about a row.
+ */
+async function listBooks(): Promise<BookRow[]> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('books')
+    .select('*')
+    // Redundant under RLS, but it is what lets the planner use
+    // `books_user_created_idx`.
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false, nullsFirst: false })
+    // `created_at` defaults to now(), and two books saved in the same instant
+    // would otherwise come back in an order that changed per fetch.
+    .order('id', { ascending: true })
+    .limit(MAX_ROWS)
+    .returns<BookRow[]>();
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** One book's pages, in reading order. */
+async function getBookPages(bookId: string): Promise<BookPageRow[]> {
+  const { data, error } = await supabase
+    .from('book_pages')
+    .select('*')
+    .eq('book_id', bookId)
+    .order('page_no', { ascending: true })
+    .limit(MAX_ROWS)
+    .returns<BookPageRow[]>();
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** One picked image, as `expo-image-picker` hands it over. */
+export interface NewBookPhoto {
+  /** The file's bytes, base64-encoded (`base64: true` on the picker). */
+  base64: string;
+  /** The asset's own MIME type, when it reported one. */
+  mimeType?: string | null;
+}
+
+export interface CreateBookArgs {
+  title_en: string;
+  title_cyr?: string | null;
+  /** The pages, in the order they were picked. Page 1 is `photos[0]`. */
+  photos: readonly NewBookPhoto[];
+  /** Called with (pages uploaded, total) as each one lands, for the progress line. */
+  onProgress?: (uploaded: number, total: number) => void;
+}
+
+/**
+ * Save a photographed book: the row, its photographs, and a page per photo.
+ *
+ * The book is written `status: 'pending'` and `source: 'photos'` with every
+ * page's `text_cyr` null — the transcription is an offline job Claude does
+ * between sessions, reading these very objects out of storage. That is the whole
+ * point of the pending state: the photographs are safe the moment this returns,
+ * and the reading is possible later.
+ *
+ * **Partial failure deletes the book.** There is no transaction spanning
+ * PostgREST and storage, so a failure part-way through would otherwise leave a
+ * half-photographed book that reads as a real one and can never be finished.
+ * Instead the objects already uploaded are removed, the book row is deleted
+ * (which cascades its pages), and the original failure is what the caller sees —
+ * so "it did not save" is the truth, and photographing it again is the fix.
+ * Cleanup is best-effort: a failed cleanup must not replace the error that
+ * explains what actually went wrong.
+ */
+async function createBookWithPhotos({
+  title_en,
+  title_cyr,
+  photos,
+  onProgress,
+}: CreateBookArgs): Promise<BookRow> {
+  const userId = await requireUserId();
+
+  // The screen blocks all three before it gets here; these are what stop a book
+  // with no title, or eighty megabytes of it, reaching storage by another route.
+  const invalid =
+    bookTitleError(title_en) ??
+    cyrillicTitleError(title_cyr ?? '') ??
+    pageCountError(photos.length);
+  if (invalid) throw new Error(invalid);
+
+  const created = await supabase
+    .from('books')
+    // `user_id` is not decoration: the `books_insert_own` policy checks it, and
+    // the composite FK on `book_pages` keys off the same pair.
+    .insert({
+      user_id: userId,
+      title_en: title_en.trim(),
+      title_cyr: title_cyr?.trim() ? title_cyr.trim() : null,
+      status: 'pending',
+      source: 'photos',
+    })
+    .select()
+    .single<BookRow>();
+  if (created.error) throw created.error;
+  const book = created.data;
+
+  const uploaded: string[] = [];
+  try {
+    onProgress?.(0, photos.length);
+
+    for (const [index, photo] of photos.entries()) {
+      const pageNo = index + 1;
+      const bytes = base64ToBytes(photo.base64);
+      if (bytes.byteLength === 0) {
+        throw new Error(`Page ${pageNo} came back empty. Choose it again.`);
+      }
+      if (bytes.byteLength > MAX_PHOTO_BYTES) {
+        throw new Error(
+          `Page ${pageNo} is too large to upload. Photograph it again at a smaller size.`,
+        );
+      }
+
+      const path = photoObjectPath(userId, book.id, pageNo);
+      const { error } = await supabase.storage
+        .from(BOOK_PHOTOS_BUCKET)
+        .upload(path, bytes, {
+          contentType: photoContentType(photo.mimeType),
+          // The book id is fresh, so nothing can be there already — this only
+          // stops a retry of the same save colliding with its own leftovers.
+          upsert: true,
+        });
+      if (error) throw error;
+
+      uploaded.push(path);
+      onProgress?.(pageNo, photos.length);
+    }
+
+    // One insert for every page rather than one per upload: the rows are what
+    // make the book readable, so they land together or not at all.
+    const pages = await supabase.from('book_pages').insert(
+      photos.map((_photo, index) => ({
+        book_id: book.id,
+        // Denormalised from `books`, and checked against it by the composite
+        // foreign key — see the migration.
+        user_id: userId,
+        page_no: index + 1,
+        text_cyr: null,
+        photo_path: photoObjectPath(userId, book.id, index + 1),
+      })),
+    );
+    if (pages.error) throw pages.error;
+  } catch (failure) {
+    await discardBook(book.id, uploaded);
+    throw failure;
+  }
+
+  return book;
+}
+
+/**
+ * Undo a half-finished save: the uploaded objects, then the book row (whose
+ * cascade takes any page rows with it).
+ *
+ * Every failure here is swallowed deliberately. This runs on the way out of a
+ * `catch`, and the caller is about to be shown why the save failed — replacing
+ * that with "cleanup failed" would trade a useful message for a useless one.
+ * What is left behind if it does fail is a pending book with fewer pages than
+ * it should have, which is visible in the list and can be deleted.
+ */
+async function discardBook(bookId: string, uploadedPaths: readonly string[]): Promise<void> {
+  try {
+    if (uploadedPaths.length > 0) {
+      await supabase.storage.from(BOOK_PHOTOS_BUCKET).remove([...uploadedPaths]);
+    }
+  } catch {
+    // Deliberately ignored — see above.
+  }
+  try {
+    await supabase.from('books').delete().eq('id', bookId);
+  } catch {
+    // Deliberately ignored — see above.
+  }
+}
+
+/**
+ * Mark a book finished. The Books rung of the ladder counts exactly this column.
+ *
+ * Unconditional by design, exactly as `finishStory` is: the reading view only
+ * offers the button on a book whose `finished_at` is null, and re-stamping the
+ * date on one already finished would change nothing that is counted anywhere.
+ */
+async function finishBook(id: string, now: Date = new Date()): Promise<BookRow> {
+  const { data, error } = await supabase
+    .from('books')
+    .update({ finished_at: now.toISOString() })
+    .eq('id', id)
+    .select()
+    .single<BookRow>();
+  if (error) throw error;
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // Capture queue
 // ---------------------------------------------------------------------------
 
@@ -1158,6 +1377,10 @@ export const api = {
   listStories,
   finishStory,
   findCardByWord,
+  listBooks,
+  getBookPages,
+  createBookWithPhotos,
+  finishBook,
   listRequests,
   createRequest,
   listGrammarTopics,

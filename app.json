@@ -48,6 +48,12 @@
           "resizeMode": "contain",
           "backgroundColor": "#FAF8F5"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Vukovica needs your photos so you can add the pages of a book you are reading together."
+        }
       ]
     ],
     "experiments": {

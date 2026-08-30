@@ -28,8 +28,16 @@ import type { Stage } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import { DAILY_GOAL } from '@/lib/xp';
 
-/** The seven places the dashboard can send the learner. */
-type ActivityKey = 'trainer' | 'letters' | 'review' | 'grammar' | 'reader' | 'deck' | 'requests';
+/** The eight places the dashboard can send the learner. */
+type ActivityKey =
+  | 'trainer'
+  | 'letters'
+  | 'review'
+  | 'grammar'
+  | 'reader'
+  | 'books'
+  | 'deck'
+  | 'requests';
 
 interface Activity {
   /** English, like every other piece of chrome. */
@@ -59,6 +67,11 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
     href: '/grammar',
   },
   reader: { label: 'Reader', blurb: 'Stories to read in Cyrillic', href: '/reader' },
+  books: {
+    label: 'Books',
+    blurb: 'Read the real books on your shelf',
+    href: '/books',
+  },
   deck: { label: 'Deck', blurb: 'Browse, edit and add words', href: '/deck' },
   requests: {
     label: 'Requests',
@@ -80,22 +93,17 @@ const ACTIVITY_ORDER: readonly ActivityKey[] = [
   'review',
   'grammar',
   'reader',
+  'books',
   'deck',
   'requests',
 ];
 
-/**
- * The activity each stage's primary button points at.
- *
- * Books points at the reader for now: it is the closest thing that exists, and
- * a button that goes nowhere is worse than one that goes somewhere useful. The
- * books screen replaces this entry when it lands.
- */
+/** The activity each stage's primary button points at. */
 const STAGE_ACTIVITY: Record<Stage, ActivityKey> = {
   alphabet: 'trainer',
   words: 'review',
   reading: 'reader',
-  books: 'reader',
+  books: 'books',
 };
 
 /** The stage names, as §3 of the phase-3 spec names them. */
