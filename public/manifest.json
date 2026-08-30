@@ -1,7 +1,7 @@
 {
   "name": "Vukovica",
-  "short_name": "Вуковица",
-  "description": "Serbian for the family: Cyrillic-first flashcards, an AI tutor and a script trainer.",
+  "short_name": "Vukovica",
+  "description": "Serbian for the family: Cyrillic-first flashcards, letter drills and graded reading.",
   "lang": "en-GB",
   "start_url": "/",
   "scope": "/",

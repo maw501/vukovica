@@ -2,8 +2,8 @@
  * The one supabase-js client for the whole app.
  *
  * Per the design spec (§3), the client talks to Supabase *directly* under RLS
- * for all CRUD. Edge Functions exist only where a server-side secret is needed
- * (tutor / generate / tts). There is no API layer to route through.
+ * for all CRUD. There is no API layer to route through, and since phase 3 no
+ * Edge Functions either — PostgREST, Auth and Storage are the whole surface.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -11,10 +11,6 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 import { supabaseAnonKey, supabaseUrl } from '@/lib/config';
-
-// `functionsUrl` is re-exported so that `${functionsUrl}/tutor` reads the same
-// from here as it always has; its definition lives in `lib/config.ts`.
-export { functionsUrl } from '@/lib/config';
 
 /**
  * Session storage. On web, passing `undefined` lets supabase-js use its default

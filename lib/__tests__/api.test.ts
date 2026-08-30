@@ -7,10 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
  * `lib/api.ts` importable at all; nothing here touches the network, and no test
  * in this file calls a function that would use the stub.
  */
-vi.mock('@/lib/supabase', () => ({
-  supabase: {},
-  functionsUrl: 'http://supabase.invalid/functions/v1',
-}));
+vi.mock('@/lib/supabase', () => ({ supabase: {} }));
 
 const { isMissingStoriesTable } = await import('@/lib/api');
 

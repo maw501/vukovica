@@ -126,16 +126,16 @@ export interface DrillStatRow {
 /**
  * A row of `public.stories` — the graded reader's library.
  *
- * Mirrors `supabase/migrations/20260830140000_stories.sql`. The `story` Edge
- * Function returns everything here except `user_id` (it is always the caller),
- * i.e. `Omit<StoryRow, 'user_id'>`.
+ * Mirrors `supabase/migrations/20260830140000_stories.sql`. Stories are seeded
+ * rather than generated, so the app only ever reads these rows and stamps
+ * `finished_at`.
  */
 export interface StoryRow {
   id: string;
   user_id: string;
   title_cyr: string;
   body_cyr: string;
-  /** 1-3; the difficulty band the story was generated at. */
+  /** 1-3; the difficulty band the story was written at. */
   level: number;
   word_count: number;
   created_at: string | null;
@@ -255,18 +255,3 @@ export interface SettingsRow {
   tts_enabled: boolean | null;
 }
 
-/**
- * A row of `public.ai_usage` — observability only. Written by Edge Functions
- * with the service role; authenticated users can read their own rows.
- */
-export interface AiUsageRow {
-  id: number;
-  user_id: string | null;
-  /** e.g. 'tutor' | 'generate' | 'tts' — not constrained in the database. */
-  surface: string | null;
-  model: string | null;
-  input_tokens: number | null;
-  output_tokens: number | null;
-  cost_cents: number | null;
-  created_at: string | null;
-}
