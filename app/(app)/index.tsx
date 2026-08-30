@@ -28,8 +28,8 @@ import type { Stage } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import { DAILY_GOAL } from '@/lib/xp';
 
-/** The five places the dashboard can send the learner. */
-type ActivityKey = 'trainer' | 'letters' | 'review' | 'reader' | 'deck';
+/** The six places the dashboard can send the learner. */
+type ActivityKey = 'trainer' | 'letters' | 'review' | 'reader' | 'deck' | 'requests';
 
 interface Activity {
   /** English, like every other piece of chrome. */
@@ -55,12 +55,18 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
   review: { label: 'Review', blurb: 'Today’s cards', href: '/review' },
   reader: { label: 'Reader', blurb: 'Stories to read in Cyrillic', href: '/reader' },
   deck: { label: 'Deck', blurb: 'Browse, edit and add words', href: '/deck' },
+  requests: {
+    label: 'Requests',
+    blurb: 'Ask how to say something in Serbian',
+    href: '/requests',
+  },
 };
 
 /**
- * The order the rows are listed in: the stages in path order, with the deck
- * last. The deck is a tool rather than a stage. Letters sits with the trainer,
- * because both are the alphabet.
+ * The order the rows are listed in: the stages in path order, then the two
+ * tools. Neither the deck nor the capture queue is a stage — they are what the
+ * stages are worked with. Letters sits with the trainer, because both are the
+ * alphabet.
  */
 const ACTIVITY_ORDER: readonly ActivityKey[] = [
   'trainer',
@@ -68,6 +74,7 @@ const ACTIVITY_ORDER: readonly ActivityKey[] = [
   'review',
   'reader',
   'deck',
+  'requests',
 ];
 
 /**
@@ -116,6 +123,10 @@ export default function DashboardScreen() {
   // progress screen, so opening that screen re-uses this entry rather than
   // asking again.
   const xp = useQuery({ queryKey: ['xp'], queryFn: () => api.getXpSummary() });
+  // The capture queue, for the Requests row's "waiting" count. The same
+  // `['requests']` list the queue screen shows rather than a count query, so
+  // opening it from here costs no round trip.
+  const requests = useQuery({ queryKey: ['requests'], queryFn: () => api.listRequests() });
 
   const stats = dashboard.data;
   const newPerDay = settings.data?.new_per_day ?? DEFAULT_NEW_PER_DAY;
@@ -136,6 +147,8 @@ export default function DashboardScreen() {
         ),
       )
     : 0;
+
+  const requestsPending = (requests.data ?? []).filter((row) => row.status === 'pending').length;
 
   const stage = progress.data?.stage;
   /** Where the stage's one big button goes. */
@@ -160,6 +173,7 @@ export default function DashboardScreen() {
             void progress.refetch();
             void letters.refetch();
             void xp.refetch();
+            void requests.refetch();
           }}
           tintColor={colors.primary}
         />
@@ -172,7 +186,10 @@ export default function DashboardScreen() {
             the stage, and the stage failing must not take them down with it. */}
         <DashboardHeader
           streakDays={stats?.streakDays ?? 0}
-          todayXp={xp.data?.today ?? 0}
+          // null, not 0, when the ledger could not be read: "0 of 30 XP today"
+          // is what a day with no work done looks like, and a failed query must
+          // not be able to impersonate one.
+          todayXp={xp.isError ? null : (xp.data?.today ?? 0)}
           stage={stage ?? null}
           goal={progress.data?.nextGoal ?? null}
           primaryKey={primaryKey}
@@ -220,6 +237,20 @@ export default function DashboardScreen() {
                       : undefined
                 }
               />
+            ) : key === 'requests' ? (
+              <ActivityButton
+                key={key}
+                activityKey={key}
+                activity={ACTIVITIES[key]}
+                badge={requestsPending > 0 ? String(requestsPending) : undefined}
+                blurb={
+                  requests.isError
+                    ? 'Could not count what is waiting.'
+                    : requests.data
+                      ? requestsBlurb(requestsPending, requests.data.length)
+                      : undefined
+                }
+              />
             ) : (
               <ActivityButton key={key} activityKey={key} activity={ACTIVITIES[key]} />
             ),
@@ -252,20 +283,23 @@ function DashboardHeader({
   primaryKey,
 }: {
   streakDays: number;
-  todayXp: number;
+  /** Today's XP, or null when the ledger could not be read at all. */
+  todayXp: number | null;
   stage: Stage | null;
   goal: string | null;
   primaryKey: ActivityKey | null;
 }) {
   const router = useRouter();
   const activity = primaryKey ? ACTIVITIES[primaryKey] : null;
+  const xpSpoken =
+    todayXp === null ? 'today’s XP unavailable' : `${todayXp} of ${DAILY_GOAL} XP today`;
 
   return (
     <View style={styles.stageCard} testID="stage-card">
       <Pressable
         style={({ pressed }) => [styles.headerStats, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={`Progress. ${streakDays} day streak, ${todayXp} of ${DAILY_GOAL} XP today.`}
+        accessibilityLabel={`Progress. ${streakDays} day streak, ${xpSpoken}.`}
         testID="header-progress"
         onPress={() => router.push('/progress')}
       >
@@ -276,10 +310,23 @@ function DashboardHeader({
           </Text>
         </View>
         <View style={styles.headerStat} testID="stat-xp">
-          {/* The ring is a disc with a hole in it, so the hole has to be
-              painted the colour of what it sits on. */}
-          <XpRing today={todayXp} size={60} hole={colors.background} />
-          <Text style={styles.headerStatLabel}>of {DAILY_GOAL} XP today</Text>
+          {todayXp === null ? (
+            // A dash, not an empty ring: an unfilled ring reads as "nothing done
+            // today", which is a claim this screen is in no position to make.
+            <>
+              <Text style={styles.headerStatValue} testID="xp-unavailable">
+                —
+              </Text>
+              <Text style={styles.headerStatLabel}>XP today unavailable</Text>
+            </>
+          ) : (
+            <>
+              {/* The ring is a disc with a hole in it, so the hole has to be
+                  painted the colour of what it sits on. */}
+              <XpRing today={todayXp} size={60} hole={colors.background} />
+              <Text style={styles.headerStatLabel}>of {DAILY_GOAL} XP today</Text>
+            </>
+          )}
         </View>
         {/* Says out loud what the row is: two numbers and a chevron would leave
             the way to the rest of them to be guessed at. */}
@@ -397,6 +444,19 @@ function lettersBlurb(due: number, newLeft: number, newAvailable: number): strin
   return newAvailable > 0 ? 'Nothing due — more letters tomorrow' : 'Nothing due today';
 }
 
+/**
+ * The Requests row's second line: what is still waiting to be answered.
+ *
+ * "Waiting" rather than "pending" because the queue is answered by hand between
+ * sessions — the honest thing to say is that nothing has come back yet, not that
+ * a job is running.
+ */
+function requestsBlurb(pending: number, total: number): string {
+  if (pending > 0) return `${pending} waiting to be answered`;
+  if (total > 0) return 'All answered';
+  return ACTIVITIES.requests.blurb;
+}
+
 function ActivityButton({
   activityKey,
   activity,
@@ -417,7 +477,10 @@ function ActivityButton({
     <Pressable
       style={({ pressed }) => [styles.activity, pressed && styles.activityPressed]}
       accessibilityRole="button"
-      accessibilityLabel={badge ? `${activity.label}, ${badge} due` : activity.label}
+      // The live blurb rather than the badge: "3 due · 2 new" and "2 waiting to
+      // be answered" both say what the number means, which a bare count read
+      // aloud as "3 due" would only get right for one of the two rows.
+      accessibilityLabel={badge ? `${activity.label}, ${line}` : activity.label}
       testID={`activity-${activityKey}`}
       onPress={() => router.push(activity.href)}
     >

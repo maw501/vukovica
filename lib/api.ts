@@ -33,6 +33,8 @@ import { supabase } from '@/lib/supabase';
 import type {
   CardRow,
   DrillStatRow,
+  RequestRow,
+  RequestSource,
   SettingsRow,
   StoryRow,
   UserCardRow,
@@ -937,6 +939,99 @@ async function findCardByWord(word: string): Promise<CardRow | null> {
   return (data ?? []).find((card) => card.sr_cyr.trim().toLowerCase() === lowered) ?? null;
 }
 
+// ---------------------------------------------------------------------------
+// Capture queue
+// ---------------------------------------------------------------------------
+
+/**
+ * The card columns a fulfilled request shows. Deliberately not the whole row:
+ * the queue is a list of answers, and the answer to "how do I say this?" is the
+ * Serbian and its gloss — the rest of the card is what the deck screen is for.
+ */
+export type RequestCard = Pick<CardRow, 'sr_cyr' | 'en'>;
+
+/** A `requests` row together with the card that answered it, if one has. */
+export interface RequestEntry extends RequestRow {
+  /** null while pending, and for a fulfilled request whose card was deleted. */
+  card: RequestCard | null;
+}
+
+/**
+ * The embed as PostgREST returns it. `requests.card_id` is a plain nullable FK,
+ * so the answer is a single object or null — typed defensively against an array
+ * anyway, exactly as `DueJoinRow` is, because a schema change that made the
+ * relationship ambiguous would otherwise fail silently at runtime.
+ */
+interface RequestJoinRow extends RequestRow {
+  card: RequestCard | RequestCard[] | null;
+}
+
+function embeddedRequestCard(row: RequestJoinRow): RequestCard | null {
+  if (!row.card) return null;
+  return Array.isArray(row.card) ? (row.card[0] ?? null) : row.card;
+}
+
+/**
+ * The capture queue, newest first, with each answered request's card alongside.
+ *
+ * One read rather than a list plus a card lookup per done row: the join is a
+ * left join (`card_id` is nullable), so a pending request comes back with
+ * `card: null` and nothing has to be stitched together on the client.
+ */
+async function listRequests(): Promise<RequestEntry[]> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('requests')
+    // Aliased to `card` because it is one card, not the table.
+    .select('*, card:cards(sr_cyr, en)')
+    // Redundant under RLS, but it is what lets the planner use
+    // `requests_user_created_idx`.
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    // `created_at` defaults to now() and two requests filed in the same instant
+    // would otherwise come back in an arbitrary order that changed per fetch.
+    .order('id', { ascending: true })
+    .limit(MAX_ROWS)
+    .returns<RequestJoinRow[]>();
+  if (error) throw error;
+
+  return (data ?? []).map((row) => {
+    const { card: _embedded, ...rest } = row;
+    return { ...rest, card: embeddedRequestCard(row) };
+  });
+}
+
+export interface CreateRequestArgs {
+  /** What Mark typed, or the tapped word and its sentence (`readerRequestText`). */
+  text_en: string;
+  /** Defaults to the quick-add box; the reading views pass 'reader'. */
+  source?: RequestSource;
+}
+
+/**
+ * File one request. `status` and `created_at` come from the schema's defaults,
+ * so "pending, now" is defined in exactly one place.
+ *
+ * No XP: `XP_AWARDS.request` is 0 on purpose (spec §9) — asking for a phrase is
+ * not study, and paying for it would make the ring fillable by typing.
+ */
+async function createRequest({ text_en, source = 'typed' }: CreateRequestArgs): Promise<RequestRow> {
+  const userId = await requireUserId();
+  const text = text_en.trim();
+  // Trimmed to nothing is not a request. The screen blocks this before it gets
+  // here; the check is what stops a blank row reaching a queue answered by hand.
+  if (text === '') throw new Error('A request needs some text.');
+
+  const { data, error } = await supabase
+    .from('requests')
+    // `user_id` is not decoration: the `requests_insert_own` policy checks it.
+    .insert({ user_id: userId, text_en: text, source })
+    .select()
+    .single<RequestRow>();
+  if (error) throw error;
+  return data;
+}
+
 export const api = {
   getSettings,
   updateSettings,
@@ -957,4 +1052,6 @@ export const api = {
   listStories,
   finishStory,
   findCardByWord,
+  listRequests,
+  createRequest,
 };

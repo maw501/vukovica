@@ -75,6 +75,10 @@ export default function DeckScreen() {
     // A deleted card can take a known word with it, which moves the Words goal.
     void queryClient.invalidateQueries({ queryKey: ['progress'] });
     void queryClient.invalidateQueries({ queryKey: ['queue'] });
+    // The reader's gloss sheet caches its per-word deck lookup with
+    // `staleTime: Infinity`, so a word added (or deleted) here would otherwise
+    // keep glossing as "not in your deck" for the rest of the session.
+    void queryClient.invalidateQueries({ queryKey: ['word-lookup'] });
   }, [queryClient]);
 
   if (view.kind === 'add') {

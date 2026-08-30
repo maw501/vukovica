@@ -148,11 +148,17 @@ export default function ProgressScreen() {
                   label="Books finished"
                   testID="books-finished"
                 />
-                <Figure
-                  value={report.data?.requestsFulfilled ?? 0}
-                  label="Requests answered"
-                  testID="requests-fulfilled"
-                />
+                {/* Gated on its own query, like the Streak section above: this
+                    figure comes from `['progress-report']`, and a "0" shown
+                    while that is still loading (or after it failed) would read
+                    as "nothing has been answered" rather than "not known yet". */}
+                {report.data ? (
+                  <Figure
+                    value={report.data.requestsFulfilled}
+                    label="Requests answered"
+                    testID="requests-fulfilled"
+                  />
+                ) : null}
               </View>
             </Section>
           </>

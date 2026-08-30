@@ -48,6 +48,7 @@ export default function AppLayout() {
         <Stack.Screen name="deck" options={{ title: 'Deck' }} />
         <Stack.Screen name="trainer" options={{ title: 'Cyrillic trainer' }} />
         <Stack.Screen name="reader" options={{ title: 'Reader' }} />
+        <Stack.Screen name="requests" options={{ title: 'Requests' }} />
         {/* Title is set by the screen itself, to the story's own Cyrillic one --
             that title is the content, not chrome. */}
         <Stack.Screen name="story/[id]" options={{ title: 'Story' }} />

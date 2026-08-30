@@ -27,8 +27,8 @@ import {
   View,
 } from 'react-native';
 
+import { SpeakButton } from '@/components/SpeakButton';
 import { api, type DeckStats, type QueueEntry } from '@/lib/api';
-import { audioSupported, playAudioPath } from '@/lib/audio';
 import { confirmAction } from '@/lib/confirm';
 import { errorMessage } from '@/lib/errors';
 import { formatInterval } from '@/lib/format';
@@ -619,49 +619,6 @@ function GradeButtons({
   );
 }
 
-/**
- * Speaker button for a card's recorded clip.
- *
- * It renders nothing at all when the card has no `audio_path` — clips are
- * generated offline in batches, so a word that has not been through one simply
- * has no button rather than a button that does nothing. It also removes itself
- * if playback turns out to be impossible (unsupported platform, or a browser
- * that refused).
- */
-function SpeakButton({
-  path,
-  enabled,
-  testID,
-}: {
-  /** `cards.audio_path`; null for a card with no clip yet. */
-  path: string | null;
-  enabled: boolean;
-  testID: string;
-}) {
-  const [state, setState] = useState<'idle' | 'busy' | 'unavailable'>('idle');
-
-  // A new card means a new clip to try; forget a previous failure.
-  useEffect(() => setState('idle'), [path]);
-
-  if (!path || !enabled || !audioSupported() || state === 'unavailable') return null;
-
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.speak, pressed && styles.pressed]}
-      accessibilityRole="button"
-      accessibilityLabel="Play the pronunciation"
-      testID={testID}
-      onPress={() => {
-        setState('busy');
-        void playAudioPath(path).then((played) => setState(played ? 'idle' : 'unavailable'));
-      }}
-    >
-      <Text style={styles.speakIcon}>{state === 'busy' ? '…' : '🔊'}</Text>
-      <Text style={styles.speakLabel}>listen</Text>
-    </Pressable>
-  );
-}
-
 function Summary({
   session,
   emptyMessage,
@@ -805,14 +762,6 @@ const styles = StyleSheet.create({
   exampleLat: { fontSize: 14, color: colors.textMuted, textAlign: 'center' },
   exampleEn: { fontSize: 14, color: colors.textMuted, textAlign: 'center', fontStyle: 'italic' },
   speakRow: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.sm },
-  speak: {
-    minWidth: touchTarget + 12,
-    minHeight: touchTarget - 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  speakIcon: { fontSize: 22 },
-  speakLabel: { fontSize: 11, color: colors.textMuted },
   revealButton: {
     minHeight: touchTarget,
     alignItems: 'center',
