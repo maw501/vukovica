@@ -4,6 +4,7 @@
  * Mark has registered, and the deployed bundle then has no sign-up path at all.
  */
 
+import Head from 'expo-router/head';
 import { useState } from 'react';
 import {
   ActivityIndicator,
@@ -62,6 +63,10 @@ export default function SignInScreen() {
       style={styles.flex}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      {/* See app/(app)/_layout.tsx: the browser tab title has to come from `Head`. */}
+      <Head>
+        <title>Vukovica</title>
+      </Head>
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.content}>
           <Text style={styles.wordmark}>Вуковица</Text>

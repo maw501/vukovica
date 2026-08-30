@@ -1,0 +1,22 @@
+{
+  "name": "Vukovica",
+  "short_name": "Вуковица",
+  "description": "Serbian for the family: Cyrillic-first flashcards, an AI tutor and a script trainer.",
+  "lang": "en-GB",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#17427A",
+  "background_color": "#FAF8F5",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

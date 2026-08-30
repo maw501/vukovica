@@ -5,38 +5,50 @@
  */
 
 import { Link, Stack } from 'expo-router';
+import Head from 'expo-router/head';
 import { StyleSheet, Text } from 'react-native';
 
 import { colors, spacing } from '@/lib/theme';
 
 export default function AppLayout() {
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerShadowVisible: false,
-        headerTintColor: colors.primary,
-        headerTitleStyle: { color: colors.text, fontWeight: '600' },
-        contentStyle: { backgroundColor: colors.background },
-      }}
-    >
-      <Stack.Screen
-        name="index"
-        options={{
-          title: 'Вуковица',
-          headerRight: () => (
-            <Link href="/settings" style={styles.headerLink} testID="header-settings">
-              <Text style={styles.headerLinkText}>Settings</Text>
-            </Link>
-          ),
+    <>
+      {/*
+        The browser tab / installed-app name. It has to come from `Head` rather
+        than from `app/+html.tsx`: the static renderer injects react-helmet's
+        (empty) title as the first child of <head>, and the first <title> in the
+        document is the one the browser uses.
+      */}
+      <Head>
+        <title>Vukovica</title>
+      </Head>
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.background },
+          headerShadowVisible: false,
+          headerTintColor: colors.primary,
+          headerTitleStyle: { color: colors.text, fontWeight: '600' },
+          contentStyle: { backgroundColor: colors.background },
         }}
-      />
-      <Stack.Screen name="settings" options={{ title: 'Settings' }} />
-      <Stack.Screen name="review" options={{ title: 'Учи' }} />
-      <Stack.Screen name="deck" options={{ title: 'Шпил' }} />
-      <Stack.Screen name="trainer" options={{ title: 'Ћирилица' }} />
-      <Stack.Screen name="chat" options={{ title: 'Разговор' }} />
-    </Stack>
+      >
+        <Stack.Screen
+          name="index"
+          options={{
+            title: 'Вуковица',
+            headerRight: () => (
+              <Link href="/settings" style={styles.headerLink} testID="header-settings">
+                <Text style={styles.headerLinkText}>Settings</Text>
+              </Link>
+            ),
+          }}
+        />
+        <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+        <Stack.Screen name="review" options={{ title: 'Учи' }} />
+        <Stack.Screen name="deck" options={{ title: 'Шпил' }} />
+        <Stack.Screen name="trainer" options={{ title: 'Ћирилица' }} />
+        <Stack.Screen name="chat" options={{ title: 'Разговор' }} />
+      </Stack>
+    </>
   );
 }
 
