@@ -46,6 +46,9 @@ export default function AppLayout() {
         <Stack.Screen name="review" options={{ title: 'Учи' }} />
         <Stack.Screen name="deck" options={{ title: 'Шпил' }} />
         <Stack.Screen name="trainer" options={{ title: 'Ћирилица' }} />
+        <Stack.Screen name="reader" options={{ title: 'Читање' }} />
+        {/* Title is set by the screen itself, to the story's own Cyrillic one. */}
+        <Stack.Screen name="story/[id]" options={{ title: 'Прича' }} />
         <Stack.Screen name="chat" options={{ title: 'Разговор' }} />
       </Stack>
     </>

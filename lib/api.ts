@@ -15,6 +15,7 @@ import {
 import { callEdgeFunction } from '@/lib/edge';
 import { gradeCard, newUserCard, type ReviewGrade } from '@/lib/fsrs';
 import { buildQueue } from '@/lib/queue';
+import { parseGloss, type Gloss, type StoryLevel } from '@/lib/reader';
 import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
 import { computeProgress, type Progress } from '@/lib/stages';
 import {
@@ -30,6 +31,7 @@ import type {
   ChatRole,
   DrillStatRow,
   SettingsRow,
+  StoryRow,
   UserCardRow,
 } from '@/lib/types';
 
@@ -610,6 +612,106 @@ async function getProgress(): Promise<Progress> {
 }
 
 // ---------------------------------------------------------------------------
+// Graded reader
+// ---------------------------------------------------------------------------
+
+/**
+ * The library, newest first. Unread and finished stories come back together —
+ * the reader screen splits them, so re-reading a finished story costs no extra
+ * round trip and the two sections can never disagree about a row.
+ */
+async function listStories(): Promise<StoryRow[]> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('stories')
+    .select('*')
+    // Redundant under RLS, but it is what lets the planner use
+    // `stories_user_created_idx`.
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(MAX_ROWS)
+    .returns<StoryRow[]>();
+  if (error) throw error;
+  return data ?? [];
+}
+
+/**
+ * Ask the `story` Edge Function for a new story.
+ *
+ * The function inserts the row itself with the service role (the client has no
+ * business writing a story it did not generate), so this is one round trip and
+ * the response *is* the saved row — minus `user_id`, which is always the caller.
+ */
+async function createStory(level: StoryLevel, topic?: string): Promise<Omit<StoryRow, 'user_id'>> {
+  const trimmed = topic?.trim();
+  // Sent only when there is one: the function treats a blank topic as no topic,
+  // and this keeps the wire body honest about what was asked for.
+  const body = trimmed ? { level, topic: trimmed } : { level };
+  const story = await callEdgeFunction<Omit<StoryRow, 'user_id'>>('story', body);
+
+  // The caller navigates straight to `story.id`, so a response that is not a
+  // row would strand the reader on an empty screen rather than fail loudly.
+  if (!story || typeof story.id !== 'string' || typeof story.body_cyr !== 'string') {
+    throw new Error('The story was generated but came back unreadable. Pull to refresh.');
+  }
+  return story;
+}
+
+/**
+ * Mark a story read. The Читање ladder counts exactly this column.
+ *
+ * Unconditional by design: the reading view only offers the button on a story
+ * whose `finished_at` is null, and re-stamping the date on one that is already
+ * finished would change nothing that is counted anywhere.
+ */
+async function finishStory(id: string, now: Date = new Date()): Promise<StoryRow> {
+  const { data, error } = await supabase
+    .from('stories')
+    .update({ finished_at: now.toISOString() })
+    .eq('id', id)
+    .select()
+    .single<StoryRow>();
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Explain one tapped word in its sentence, via `generate` mode `gloss`.
+ *
+ * Two different 502s can come back and they mean opposite things to the user —
+ * see `describeGlossError`, which is the only place that wording lives.
+ */
+async function glossWord(word: string, sentence: string): Promise<Gloss> {
+  const body = await callEdgeFunction<unknown>('generate', { mode: 'gloss', word, sentence });
+  return parseGloss(body);
+}
+
+/**
+ * The deck's card for `word`, matched case-insensitively on `sr_cyr`, or null.
+ *
+ * `ilike` gets the case-insensitivity, and the exact re-check in JS is what
+ * makes it a *match* rather than a pattern: `%` and `_` are wildcards to
+ * PostgREST, and although `tokenize` can only ever hand this letters and
+ * hyphens, a near-miss card silently shown as "the word you tapped" would be a
+ * quiet lie rather than a visible bug.
+ */
+async function findCardByWord(word: string): Promise<CardRow | null> {
+  const needle = word.trim();
+  if (!needle) return null;
+
+  const { data, error } = await supabase
+    .from('cards')
+    .select('*')
+    .ilike('sr_cyr', needle)
+    .limit(5)
+    .returns<CardRow[]>();
+  if (error) throw error;
+
+  const lowered = needle.toLowerCase();
+  return (data ?? []).find((card) => card.sr_cyr.trim().toLowerCase() === lowered) ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // Tutor chat
 // ---------------------------------------------------------------------------
 
@@ -728,6 +830,11 @@ export const api = {
   listDrillStats,
   recordDrillAttempts,
   getProgress,
+  listStories,
+  createStory,
+  finishStory,
+  glossWord,
+  findCardByWord,
   listChatMessages,
   appendChatMessage,
   getLearnerState,

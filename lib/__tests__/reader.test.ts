@@ -1,0 +1,287 @@
+import { describe, expect, it } from 'vitest';
+
+import { EdgeFunctionError } from '@/lib/errors';
+import {
+  describeGlossError,
+  describeStoryError,
+  parseGloss,
+  sentenceAt,
+  suggestedLevel,
+  tokenize,
+  type Token,
+} from '@/lib/reader';
+
+/**
+ * The body of the story sitting in the local database, verbatim (including the
+ * blank lines between paragraphs and the Serbian quotation marks). Every
+ * interesting case the reader has to survive is already in it, so the tests use
+ * the real thing rather than an invented string.
+ */
+const STORY = [
+  'Мама и беба су код куће. Мачка спава у башти.',
+  '',
+  'Беба гледа мачку и смеје се. Мама доноси млеко.',
+  '',
+  '„Дођи, мацо”, каже беба. Мачка долази и пије млеко. Сви су срећни.',
+].join('\n');
+
+/** The tokens' text, for readable assertions. */
+function texts(tokens: readonly Token[]): string[] {
+  return tokens.map((token) => token.text);
+}
+
+/** Just the words a reader can tap. */
+function tappable(tokens: readonly Token[]): string[] {
+  return tokens.filter((token) => token.tappable).map((token) => token.text);
+}
+
+// ---------------------------------------------------------------------------
+// tokenize
+// ---------------------------------------------------------------------------
+
+describe('tokenize', () => {
+  it('tiles the source exactly — joining the tokens gives the body back', () => {
+    // The whole rendering strategy rests on this: the body is one <Text> whose
+    // children are the tokens, so anything the tokenizer drops (a space, a
+    // newline, a quote) disappears from the page.
+    expect(texts(tokenize(STORY)).join('')).toBe(STORY);
+  });
+
+  it('splits on whitespace, and the whitespace is its own untappable token', () => {
+    expect(tokenize('Мама и беба')).toEqual([
+      { text: 'Мама', tappable: true },
+      { text: ' ', tappable: false },
+      { text: 'и', tappable: true },
+      { text: ' ', tappable: false },
+      { text: 'беба', tappable: true },
+    ]);
+  });
+
+  it('splits punctuation glued to a word off as a separate untappable token', () => {
+    expect(tokenize('куће.')).toEqual([
+      { text: 'куће', tappable: true },
+      { text: '.', tappable: false },
+    ]);
+    expect(tokenize('беба,')).toEqual([
+      { text: 'беба', tappable: true },
+      { text: ',', tappable: false },
+    ]);
+  });
+
+  it('handles the Serbian quotation marks „ ” on both sides of a word', () => {
+    // Straight from the story: the opening quote is glued to the front of a
+    // word and the closing one to the back, with a comma after it.
+    expect(tokenize('„Дођи, мацо”,')).toEqual([
+      { text: '„', tappable: false },
+      { text: 'Дођи', tappable: true },
+      { text: ',', tappable: false },
+      { text: ' ', tappable: false },
+      { text: 'мацо', tappable: true },
+      { text: '”,', tappable: false },
+    ]);
+  });
+
+  it('keeps a hyphenated word as ONE tappable token', () => {
+    expect(tokenize('црно-бела')).toEqual([{ text: 'црно-бела', tappable: true }]);
+    expect(tappable(tokenize('дан-два и радо-радо-радо'))).toEqual([
+      'дан-два',
+      'и',
+      'радо-радо-радо',
+    ]);
+  });
+
+  it('does not swallow a hyphen that is not between letters', () => {
+    // A trailing or leading dash is punctuation, not part of the word.
+    expect(tokenize('како-')).toEqual([
+      { text: 'како', tappable: true },
+      { text: '-', tappable: false },
+    ]);
+    expect(tokenize('-како')).toEqual([
+      { text: '-', tappable: false },
+      { text: 'како', tappable: true },
+    ]);
+  });
+
+  it('treats dashes, ellipses and runs of punctuation as untappable', () => {
+    expect(tokenize('— Шта?!')).toEqual([
+      { text: '—', tappable: false },
+      { text: ' ', tappable: false },
+      { text: 'Шта', tappable: true },
+      // A maximal run of punctuation is one token; there is nothing to gain
+      // from rendering "?" and "!" separately.
+      { text: '?!', tappable: false },
+    ]);
+    expect(tokenize('чекај…')).toEqual([
+      { text: 'чекај', tappable: true },
+      { text: '…', tappable: false },
+    ]);
+  });
+
+  it('keeps newlines, so paragraph breaks survive to the page', () => {
+    const tokens = tokenize('Први.\n\nДруги.');
+    expect(texts(tokens)).toEqual(['Први', '.', '\n\n', 'Други', '.']);
+    expect(tokens.every((token) => (token.text.includes('\n') ? !token.tappable : true))).toBe(
+      true,
+    );
+  });
+
+  it('is not fooled by digits — a number is not a word to gloss', () => {
+    // The story prompt spells numbers out, but a stray digit must not become a
+    // tappable token that sends "1996" to the gloss endpoint.
+    expect(tokenize('1996')).toEqual([{ text: '1996', tappable: false }]);
+  });
+
+  it('returns nothing for an empty body and does not invent tokens for blanks', () => {
+    expect(tokenize('')).toEqual([]);
+    expect(tokenize('   ')).toEqual([{ text: '   ', tappable: false }]);
+  });
+
+  it('makes every tappable token a word of letters (optionally hyphenated)', () => {
+    for (const token of tokenize(STORY)) {
+      if (token.tappable) expect(token.text).toMatch(/^\p{L}+(?:-\p{L}+)*$/u);
+    }
+    // And it really did find the words: the story's first sentence, in order.
+    expect(tappable(tokenize(STORY)).slice(0, 6)).toEqual([
+      'Мама',
+      'и',
+      'беба',
+      'су',
+      'код',
+      'куће',
+    ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sentenceAt — the context the gloss endpoint is given
+// ---------------------------------------------------------------------------
+
+describe('sentenceAt', () => {
+  const tokens = tokenize(STORY);
+  const indexOfWord = (word: string) =>
+    tokens.findIndex((token) => token.tappable && token.text === word);
+
+  it('returns the sentence around a tapped word, punctuation and all', () => {
+    expect(sentenceAt(tokens, indexOfWord('мачку'))).toBe('Беба гледа мачку и смеје се.');
+  });
+
+  it('starts a sentence after the previous full stop, not at the paragraph start', () => {
+    expect(sentenceAt(tokens, indexOfWord('спава'))).toBe('Мачка спава у башти.');
+  });
+
+  it('does not run across a paragraph break', () => {
+    // "Мама" appears in two paragraphs; the second one's sentence must not
+    // reach back into the first.
+    const second = tokens.findIndex(
+      (token, index) => token.tappable && token.text === 'Мама' && index > indexOfWord('спава'),
+    );
+    expect(sentenceAt(tokens, second)).toBe('Мама доноси млеко.');
+  });
+
+  it('keeps quoted speech together — a quote mark is not a sentence end', () => {
+    expect(sentenceAt(tokens, indexOfWord('Дођи'))).toBe('„Дођи, мацо”, каже беба.');
+  });
+
+  it('falls back to everything it has when the text has no full stop', () => {
+    const bare = tokenize('Мачка спава у башти');
+    expect(sentenceAt(bare, 0)).toBe('Мачка спава у башти');
+  });
+
+  it('is safe on an index that is not there', () => {
+    expect(sentenceAt(tokens, -1)).toBe('');
+    expect(sentenceAt(tokens, tokens.length)).toBe('');
+    expect(sentenceAt([], 0)).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// suggestedLevel
+// ---------------------------------------------------------------------------
+
+describe('suggestedLevel', () => {
+  it('suggests level 1 below 300 known words', () => {
+    expect(suggestedLevel(0)).toBe(1);
+    expect(suggestedLevel(299)).toBe(1);
+  });
+
+  it('suggests level 2 from 300 to 599', () => {
+    expect(suggestedLevel(300)).toBe(2);
+    expect(suggestedLevel(599)).toBe(2);
+  });
+
+  it('suggests level 3 from 600 up', () => {
+    expect(suggestedLevel(600)).toBe(3);
+    expect(suggestedLevel(50_000)).toBe(3);
+  });
+
+  it('never goes below level 1 on nonsense input', () => {
+    expect(suggestedLevel(-1)).toBe(1);
+    expect(suggestedLevel(Number.NaN)).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseGloss
+// ---------------------------------------------------------------------------
+
+describe('parseGloss', () => {
+  it('takes the three fields and trims them', () => {
+    expect(parseGloss({ base_form_cyr: ' мачка ', en: ' cat ', note: ' accusative ' })).toEqual({
+      base_form_cyr: 'мачка',
+      en: 'cat',
+      note: 'accusative',
+    });
+  });
+
+  it('treats a missing note as no note — plenty of words need no explaining', () => {
+    expect(parseGloss({ base_form_cyr: 'мачка', en: 'cat' }).note).toBe('');
+  });
+
+  it('refuses a payload with no base form or no English rather than rendering “undefined”', () => {
+    expect(() => parseGloss({ en: 'cat' })).toThrow(/incomplete/i);
+    expect(() => parseGloss({ base_form_cyr: 'мачка', en: '  ' })).toThrow(/incomplete/i);
+    expect(() => parseGloss(null)).toThrow(/incomplete/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Error wording — the two 502 codes mean opposite things to the user
+// ---------------------------------------------------------------------------
+
+describe('describeGlossError', () => {
+  it('blames the API key for provider_error', () => {
+    const message = describeGlossError(new EdgeFunctionError(502, 'provider_error'));
+    expect(message).toMatch(/API key/i);
+  });
+
+  it('does NOT blame the API key for invalid_gloss — the key is fine', () => {
+    const message = describeGlossError(new EdgeFunctionError(502, 'invalid_gloss'));
+    expect(message).not.toMatch(/key/i);
+    expect(message).toMatch(/try again/i);
+  });
+
+  it('still says something sensible for an unknown 502, a 401 and a 400', () => {
+    expect(describeGlossError(new EdgeFunctionError(502, 'kaboom'))).toMatch(/API key/i);
+    expect(describeGlossError(new EdgeFunctionError(401, 'unauthorized'))).toMatch(/[Ss]ign in/);
+    expect(describeGlossError(new EdgeFunctionError(400, 'word_required'))).toMatch(/rejected/i);
+    expect(describeGlossError(new Error('offline'))).toBe('offline');
+  });
+});
+
+describe('describeStoryError', () => {
+  it('blames the API key for provider_error', () => {
+    expect(describeStoryError(new EdgeFunctionError(502, 'provider_error'))).toMatch(/API key/i);
+  });
+
+  it('does NOT blame the API key for invalid_story — that is the model, not the key', () => {
+    const message = describeStoryError(new EdgeFunctionError(502, 'invalid_story'));
+    expect(message).not.toMatch(/key/i);
+    expect(message).toMatch(/try again/i);
+  });
+
+  it('reports a failed insert as a server problem, not an AI one', () => {
+    const message = describeStoryError(new EdgeFunctionError(500, 'insert_failed'));
+    expect(message).not.toMatch(/key/i);
+    expect(message).toMatch(/server/i);
+  });
+});

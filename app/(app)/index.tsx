@@ -38,9 +38,7 @@ interface Activity {
 const ACTIVITIES: Record<ActivityKey, Activity> = {
   trainer: { cyr: 'Ћирилица', en: 'Cyrillic trainer', href: '/trainer' },
   review: { cyr: 'Учи', en: 'Review', href: '/review' },
-  // Wired up in Task 4 of this phase; until then the row says СКОРО and the
-  // Читање primary button falls back to reviews.
-  reader: { cyr: 'Читање', en: 'Reader', href: null },
+  reader: { cyr: 'Читање', en: 'Reader', href: '/reader' },
   chat: { cyr: 'Разговор', en: 'Chat with tutor', href: '/chat' },
   deck: { cyr: 'Шпил', en: 'Deck', href: '/deck' },
 };
