@@ -23,6 +23,21 @@ export type ChatRole = 'user' | 'assistant';
  */
 export type CardKind = 'word' | 'letter';
 
+/** `books.status` — 'pending' until the pages have text. */
+export type BookStatus = 'pending' | 'ready';
+
+/**
+ * `books.source` — 'claude' for a Claude-authored rendering seeded before the
+ * real pages exist, 'photos' for one built from photographs of the book.
+ */
+export type BookSource = 'claude' | 'photos';
+
+/** `requests.source` — the quick-add box, or a tap in a reading view. */
+export type RequestSource = 'typed' | 'reader';
+
+/** `requests.status` — 'done' once a card answers it. */
+export type RequestStatus = 'pending' | 'done';
+
 /** `xp_events.kind` — what earned the XP. */
 export type XpKind =
   | 'review'
@@ -138,10 +153,9 @@ export interface BookRow {
   user_id: string;
   title_en: string;
   title_cyr: string | null;
-  /** 'pending' until the pages have text; photographed books start pending. */
-  status: 'pending' | 'ready';
-  /** 'claude' = a Claude-authored rendering, 'photos' = built from photographs. */
-  source: 'claude' | 'photos';
+  /** Photographed books start pending, and are transcribed offline. */
+  status: BookStatus;
+  source: BookSource;
   /** null = unread. Set when the reader taps "Finished". */
   finished_at: string | null;
   created_at: string | null;
@@ -151,6 +165,10 @@ export interface BookRow {
 export interface BookPageRow {
   id: string;
   book_id: string;
+  /**
+   * Always the owner of `book_id`: a composite foreign key onto
+   * `books (id, user_id)` makes the two impossible to disagree.
+   */
   user_id: string;
   page_no: number;
   /** null while the book is pending transcription. */
@@ -172,8 +190,8 @@ export interface RequestRow {
   user_id: string;
   /** What Mark typed, or the tapped word plus its sentence. */
   text_en: string;
-  source: 'typed' | 'reader';
-  status: 'pending' | 'done';
+  source: RequestSource;
+  status: RequestStatus;
   /** The card that answered the request; null while pending. */
   card_id: string | null;
   note: string | null;

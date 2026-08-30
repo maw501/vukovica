@@ -37,9 +37,10 @@ alter table public.cards
   add column kind text not null default 'word'
     check (kind in ('word', 'letter'));
 
--- Every queue read is "the cards of one deck", and the letters deck is a small
--- slice of a table that is mostly words.
-create index cards_kind_idx on public.cards (kind);
+-- Partial, because the interesting query is only ever "the letters": they are a
+-- ~30-row slice of a table that is otherwise entirely words, so an index over
+-- the whole column would be one huge entry for the value nobody filters on.
+create index cards_kind_idx on public.cards (kind) where kind = 'letter';
 
 -- ---------------------------------------------------------------------------
 -- books: one row per book Mark is reading with his son.
@@ -62,7 +63,10 @@ create table public.books (
               check (status in ('pending', 'ready')),
   source      text not null check (source in ('claude', 'photos')),
   finished_at timestamptz,
-  created_at  timestamptz default now()
+  created_at  timestamptz default now(),
+  -- Redundant on its own -- `id` is already unique -- but it is the target
+  -- `book_pages` needs for its composite foreign key. See that table.
+  unique (id, user_id)
 );
 
 -- The library lists newest-first per user, exactly like `stories`.
@@ -100,15 +104,26 @@ grant all on public.books to service_role;
 -- `user_id` is denormalised from `books` deliberately: it lets the owner policy
 -- be a plain column comparison rather than a subquery into `books`, which every
 -- page read would otherwise pay for.
+--
+-- That denormalisation is only safe if the two can never disagree, and the RLS
+-- policies alone do not make it so: they check `user_id = auth.uid()`, which a
+-- client satisfies by writing its *own* id -- so holding somebody else's
+-- `book_id` would be enough to staple pages onto their book. The composite
+-- foreign key closes that: `(book_id, user_id)` has to name a real row of
+-- `books`, so the page's owner is the book's owner by construction rather than
+-- by convention. `books (id, user_id)` carries the unique constraint it needs
+-- as a target.
 -- ---------------------------------------------------------------------------
 create table public.book_pages (
   id         uuid primary key default gen_random_uuid(),
-  book_id    uuid not null references public.books (id) on delete cascade,
+  book_id    uuid not null,
   user_id    uuid not null references auth.users (id) on delete cascade,
   page_no    int not null,
   text_cyr   text,
   photo_path text,
   created_at timestamptz default now(),
+  foreign key (book_id, user_id)
+    references public.books (id, user_id) on delete cascade,
   unique (book_id, page_no)
 );
 
