@@ -28,6 +28,7 @@ import {
   View,
 } from 'react-native';
 
+import { MixedText, ScriptText } from '@/components/ScriptText';
 import { api, type NewBookPhoto } from '@/lib/api';
 import {
   bookTitleError,
@@ -307,6 +308,18 @@ export default function BooksScreen() {
   );
 }
 
+/**
+ * The name a book goes by on the shelf: its Cyrillic title, set as Serbian, or
+ * its English one, which is a title like any other and keeps the row's colour.
+ */
+function BookTitle({ book }: { book: BookRow }) {
+  return (
+    <ScriptText role={book.title_cyr ? 'cyr' : 'en'} style={styles.rowTitle}>
+      {book.title_cyr ?? book.title_en}
+    </ScriptText>
+  );
+}
+
 /** A heading with a count, and whatever rows belong under it. */
 function Section({
   title,
@@ -351,12 +364,16 @@ function ReadyBook({ book }: { book: BookRow }) {
       testID={`book-row-${book.id}`}
     >
       <View style={styles.rowText}>
-        <Text style={styles.rowTitle}>{book.title_cyr ?? book.title_en}</Text>
-        {book.title_cyr ? <Text style={styles.rowMeta}>{book.title_en}</Text> : null}
+        <BookTitle book={book} />
+        {book.title_cyr ? (
+          <ScriptText role="en" style={styles.rowMeta}>
+            {book.title_en}
+          </ScriptText>
+        ) : null}
         {book.source === 'claude' ? (
-          <Text style={styles.rowMeta} testID={`book-rendering-${book.id}`}>
+          <MixedText style={styles.rowMeta} testID={`book-rendering-${book.id}`}>
             Claude’s rendering — photograph your copy for the real text
-          </Text>
+          </MixedText>
         ) : null}
         {book.finished_at ? (
           <Text style={styles.rowDone} testID={`book-finished-${book.id}`}>
@@ -380,8 +397,12 @@ function PendingBook({ book }: { book: BookRow }) {
   return (
     <View style={styles.row} testID={`book-row-${book.id}`}>
       <View style={styles.rowText}>
-        <Text style={styles.rowTitle}>{book.title_cyr ?? book.title_en}</Text>
-        {book.title_cyr ? <Text style={styles.rowMeta}>{book.title_en}</Text> : null}
+        <BookTitle book={book} />
+        {book.title_cyr ? (
+          <ScriptText role="en" style={styles.rowMeta}>
+            {book.title_en}
+          </ScriptText>
+        ) : null}
         <Text style={styles.rowMeta} testID={`book-pending-${book.id}`}>
           {PENDING_NOTE}
         </Text>
@@ -464,6 +485,9 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   rowText: { flexShrink: 1, gap: 2 },
+  // The colour is kept here rather than taken from `script`, because a book
+  // known only by its English title is still a title and must not go muted; the
+  // role supplies the serif for the Cyrillic ones and nothing else.
   rowTitle: { fontSize: 20, fontWeight: '600', color: colors.text },
   rowMeta: { fontSize: 13, color: colors.textMuted },
   rowDone: { fontSize: 13, color: colors.primary, fontWeight: '600' },

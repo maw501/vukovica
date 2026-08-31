@@ -20,6 +20,7 @@ import {
   View,
 } from 'react-native';
 
+import { MixedText } from '@/components/ScriptText';
 import { XpRing } from '@/components/XpRing';
 import { api, DEFAULT_NEW_PER_DAY } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
@@ -363,9 +364,12 @@ function DashboardHeader({
       <Text style={styles.stageName} testID="stage-name">
         {stage ? STAGE_NAME[stage] : '—'}
       </Text>
-      <Text style={styles.stageGoal} testID="stage-goal">
+      {/* The Books goal is the book's own title — "Read Погоди колико те волим
+          to your son" — so the Serbian in it is set as Serbian while the line
+          keeps the dashboard's own colour. */}
+      <MixedText style={styles.stageGoal} testID="stage-goal">
         {goal ?? 'Working out where you are…'}
-      </Text>
+      </MixedText>
 
       {activity ? (
         <Pressable

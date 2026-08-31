@@ -26,6 +26,7 @@ import {
   View,
 } from 'react-native';
 
+import { MixedText } from '@/components/ScriptText';
 import { api, type GrammarTopicEntry } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { topicAccuracy } from '@/lib/grammar';
@@ -100,7 +101,10 @@ function TopicRow({ topic }: { topic: GrammarTopicEntry }) {
       testID={`grammar-topic-${topic.slug}`}
     >
       <View style={styles.rowText}>
-        <Text style={styles.rowTitle}>{topic.title_en}</Text>
+        {/* A topic title names the verb it conjugates — "To be — сам / јесам
+            (present)" — so the Serbian in it is set as Serbian while the row
+            keeps its own heading colour. */}
+        <MixedText style={styles.rowTitle}>{topic.title_en}</MixedText>
         <Text style={styles.rowMeta} testID={`grammar-accuracy-${topic.slug}`}>
           {/* "Not drilled yet" rather than 0%: an untouched topic and one every
               answer of which was wrong are different things. */}

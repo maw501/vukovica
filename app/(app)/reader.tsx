@@ -23,6 +23,7 @@ import {
   View,
 } from 'react-native';
 
+import { ScriptText } from '@/components/ScriptText';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
@@ -130,7 +131,9 @@ function StoryRowItem({ story }: { story: StoryRow }) {
       testID={`story-row-${story.id}`}
     >
       <View style={styles.rowText}>
-        <Text style={styles.rowTitle}>{story.title_cyr}</Text>
+        <ScriptText role="cyr" style={styles.rowTitle}>
+          {story.title_cyr}
+        </ScriptText>
         <Text style={styles.rowMeta}>{story.word_count} words</Text>
       </View>
       <LevelBadge level={story.level} />
@@ -177,7 +180,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   rowText: { flexShrink: 1, gap: 2 },
-  rowTitle: { fontSize: 20, fontWeight: '600', color: colors.text },
+  // A story title is Serbian content, so its colour and face come from `script`.
+  rowTitle: { fontSize: 20, fontWeight: '600' },
   rowMeta: { fontSize: 13, color: colors.textMuted },
   badge: {
     borderRadius: radius.sm,

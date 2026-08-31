@@ -31,6 +31,7 @@ import {
   View,
 } from 'react-native';
 
+import { MixedText, ScriptText } from '@/components/ScriptText';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import {
@@ -41,7 +42,7 @@ import {
   promptParts,
   topicAccuracy,
 } from '@/lib/grammar';
-import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
+import { colors, contentMaxWidth, radius, script, spacing, touchTarget } from '@/lib/theme';
 import type { GrammarItemRow } from '@/lib/types';
 import { XP_AWARDS } from '@/lib/xp';
 
@@ -193,9 +194,12 @@ export default function GrammarTopicScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         {header}
         <View style={styles.content}>
-          <Text style={styles.title} testID="topic-title">
+          {/* A topic title names the verb it conjugates — "To be — сам /
+              јесам (present)" — so the Serbian in it is set as Serbian while the
+              heading keeps its own colour. */}
+          <MixedText style={styles.title} testID="topic-title">
             {topic.title_en}
-          </Text>
+          </MixedText>
           <Text style={styles.meta} testID="topic-accuracy">
             {accuracy === null
               ? 'Not drilled yet'
@@ -204,17 +208,20 @@ export default function GrammarTopicScreen() {
 
           <View style={styles.explainCard} testID="topic-explain">
             {explainBlocks(topic.explain_md).map((block, blockIndex) =>
+              // The explanation is English about Serbian, thick with Serbian
+              // examples, so every block is split: the prose stays muted sans
+              // and the examples inside it turn dark serif.
               block.kind === 'bullet' ? (
                 <View key={blockIndex} style={styles.bullet}>
                   {/* The number when the content numbered the item, the dot
                       otherwise — see `explainBlocks`. */}
                   <Text style={styles.bulletDot}>{block.marker ?? '•'}</Text>
-                  <Text style={styles.bulletText}>{block.text}</Text>
+                  <MixedText style={styles.bulletText}>{block.text}</MixedText>
                 </View>
               ) : (
-                <Text key={blockIndex} style={styles.paragraph}>
+                <MixedText key={blockIndex} style={styles.paragraph}>
                   {block.text}
-                </Text>
+                </MixedText>
               ),
             )}
           </View>
@@ -282,7 +289,7 @@ export default function GrammarTopicScreen() {
               missed.map((row) => (
                 <View key={row.id} style={styles.miss}>
                   <FilledPrompt item={row} />
-                  {row.note ? <Text style={styles.note}>{row.note}</Text> : null}
+                  {row.note ? <MixedText style={styles.note}>{row.note}</MixedText> : null}
                 </View>
               ))
             )}
@@ -347,15 +354,25 @@ export default function GrammarTopicScreen() {
         </Text>
 
         <View style={styles.card}>
+          {/* An English cue around a Serbian frame — "I love — ја ___
+              (волети)" — so each half of it is split rather than styled whole. */}
           <Text style={styles.prompt} testID="run-prompt">
-            {parts.before}
+            <MixedText>{parts.before}</MixedText>
             {/* The blank is filled with the right answer once the item is
                 marked, so the sentence is read whole either way — right after a
-                correct answer, and as the correction after a miss. */}
-            <Text style={marked === null ? styles.blank : marked ? styles.blankRight : styles.blankWrong}>
+                correct answer, and as the correction after a miss. The filled
+                answer is Cyrillic, so it takes the serif and keeps the
+                right/wrong colour on top of it. */}
+            <Text
+              style={
+                marked === null
+                  ? styles.blank
+                  : [script.cyr, marked ? styles.blankRight : styles.blankWrong]
+              }
+            >
               {marked === null ? '____' : item.answer_cyr}
             </Text>
-            {parts.after}
+            <MixedText>{parts.after}</MixedText>
           </Text>
 
           <TextInput
@@ -393,14 +410,14 @@ export default function GrammarTopicScreen() {
                   teaching moment. A correct answer already has the sentence
                   above it, so it gets the note alone. */}
               {marked ? null : (
-                <Text style={styles.answer} testID="run-answer">
+                <ScriptText role="cyr" style={styles.answer} testID="run-answer">
                   {item.answer_cyr}
-                </Text>
+                </ScriptText>
               )}
               {item.note ? (
-                <Text style={styles.note} testID="run-note">
+                <MixedText style={styles.note} testID="run-note">
                   {item.note}
-                </Text>
+                </MixedText>
               ) : null}
             </View>
           )}
@@ -443,9 +460,11 @@ function FilledPrompt({ item }: { item: GrammarItemRow }) {
 
   return (
     <Text style={styles.missPrompt}>
-      {parts.before}
-      <Text style={styles.missAnswer}>{item.answer_cyr}</Text>
-      {parts.after}
+      <MixedText>{parts.before}</MixedText>
+      <ScriptText role="cyr" style={styles.missAnswer}>
+        {item.answer_cyr}
+      </ScriptText>
+      <MixedText>{parts.after}</MixedText>
     </Text>
   );
 }
@@ -477,10 +496,12 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.sm,
   },
-  paragraph: { fontSize: 16, lineHeight: 24, color: colors.text },
+  // Colour and face come from `script` wherever the text is content; what is
+  // left in these entries is the size, weight and layout.
+  paragraph: { fontSize: 16, lineHeight: 26 },
   bullet: { flexDirection: 'row', gap: spacing.xs },
-  bulletDot: { fontSize: 16, lineHeight: 24, color: colors.textMuted },
-  bulletText: { flex: 1, fontSize: 16, lineHeight: 24, color: colors.text },
+  bulletDot: { fontSize: 16, lineHeight: 26, color: colors.textMuted },
+  bulletText: { flex: 1, fontSize: 16, lineHeight: 26 },
   progress: { fontSize: 13, color: colors.textMuted, textAlign: 'center' },
   card: {
     backgroundColor: colors.surface,
@@ -490,7 +511,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
-  prompt: { fontSize: 22, lineHeight: 34, color: colors.text, textAlign: 'center' },
+  prompt: { fontSize: 22, lineHeight: 36, textAlign: 'center' },
   blank: { color: colors.textMuted },
   blankRight: { color: '#2F7A4D', fontWeight: '700' },
   blankWrong: { color: colors.accent, fontWeight: '700' },
@@ -512,8 +533,8 @@ const styles = StyleSheet.create({
   verdict: { fontSize: 16, fontWeight: '700' },
   verdictRight: { color: '#2F7A4D' },
   verdictWrong: { color: colors.accent },
-  answer: { fontSize: 30, fontWeight: '700', color: colors.text },
-  note: { fontSize: 14, color: colors.textMuted, textAlign: 'center' },
+  answer: { fontSize: 30, fontWeight: '700' },
+  note: { fontSize: 14, textAlign: 'center' },
   summaryTitle: { fontSize: 32, fontWeight: '700', color: colors.text, textAlign: 'center' },
   summaryScore: { fontSize: 48, fontWeight: '700', color: colors.primary, textAlign: 'center' },
   summarySubtitle: {
@@ -532,8 +553,8 @@ const styles = StyleSheet.create({
   },
   missTitle: { fontSize: 13, color: colors.textMuted, textTransform: 'uppercase' },
   miss: { gap: 2 },
-  missPrompt: { fontSize: 16, lineHeight: 24, color: colors.text },
-  missAnswer: { color: colors.primary, fontWeight: '700' },
+  missPrompt: { fontSize: 16, lineHeight: 26 },
+  missAnswer: { fontWeight: '700' },
   primaryButton: {
     minHeight: touchTarget,
     alignItems: 'center',

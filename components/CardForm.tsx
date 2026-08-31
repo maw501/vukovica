@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { ScriptText } from '@/components/ScriptText';
 import {
   CARD_ASPECTS,
   CARD_DOMAINS,
@@ -61,7 +62,13 @@ export function CardForm({
           error={showErrors ? errors.sr_cyr : undefined}
           testID="form-sr_cyr"
         />
-        {value.sr_cyr ? <Text style={styles.derived}>Latin: {cyrToLat(value.sr_cyr)}</Text> : null}
+        {/* The label stays chrome; the transliteration itself is a Latin run and
+            is styled as one. */}
+        {value.sr_cyr ? (
+          <Text style={styles.derived}>
+            Latin: <ScriptText role="lat">{cyrToLat(value.sr_cyr)}</ScriptText>
+          </Text>
+        ) : null}
 
         <Field
           label="English"

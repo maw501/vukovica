@@ -26,6 +26,7 @@ import {
 } from 'react-native';
 
 import { CardForm } from '@/components/CardForm';
+import { MixedText, ScriptText } from '@/components/ScriptText';
 import { api } from '@/lib/api';
 import { EMPTY_CARD_INPUT, toCyrillicHeadword, type CardInput } from '@/lib/cardInput';
 import { confirmAction } from '@/lib/confirm';
@@ -180,10 +181,19 @@ export default function DeckScreen() {
               testID={`deck-row-${item.sr_cyr}`}
             >
               <View style={styles.rowText}>
-                <Text style={styles.rowCyr}>{item.sr_cyr}</Text>
+                <ScriptText role="cyr" style={styles.rowCyr}>
+                  {item.sr_cyr}
+                </ScriptText>
+                {/* Two roles on one line, so two runs rather than one string:
+                    the transliteration is terracotta and the gloss is muted. */}
                 <Text style={styles.rowSub}>
-                  {showLatin ? `${cyrToLat(item.sr_cyr)} · ` : ''}
-                  {item.en}
+                  {showLatin ? (
+                    <>
+                      <ScriptText role="lat">{cyrToLat(item.sr_cyr)}</ScriptText>
+                      {' · '}
+                    </>
+                  ) : null}
+                  <ScriptText role="en">{item.en}</ScriptText>
                 </Text>
               </View>
               <Text style={styles.chevron}>›</Text>
@@ -265,9 +275,9 @@ function AddCard({
           testID="add-input"
         />
         {word.trim() ? (
-          <Text style={styles.muted} testID="add-headword">
-            Cyrillic: {toCyrillicHeadword(word)}
-          </Text>
+          <MixedText style={styles.muted} testID="add-headword">
+            {`Cyrillic: ${toCyrillicHeadword(word)}`}
+          </MixedText>
         ) : null}
 
         <Pressable
@@ -412,8 +422,10 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   rowText: { flex: 1, gap: 2 },
-  rowCyr: { fontSize: 22, fontWeight: '600', color: colors.text },
+  // Colour and face come from `script`; only size and weight live here.
+  rowCyr: { fontSize: 22, fontWeight: '600' },
   rowSub: { fontSize: 13, color: colors.textMuted },
+
   chevron: { fontSize: 26, color: colors.primary },
   formTitle: { fontSize: 26, fontWeight: '700', color: colors.text },
   input: {

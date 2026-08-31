@@ -27,6 +27,7 @@ import {
   View,
 } from 'react-native';
 
+import { MixedText, ScriptText } from '@/components/ScriptText';
 import { SpeakButton } from '@/components/SpeakButton';
 import { api, type DeckStats, type QueueEntry } from '@/lib/api';
 import { confirmAction } from '@/lib/confirm';
@@ -503,20 +504,20 @@ function WordFace({
 }) {
   return (
     <>
-      <Text style={styles.cyrillic} testID="card-cyr">
+      <ScriptText role="cyr" style={styles.cyrillic} testID="card-cyr">
         {card.sr_cyr}
-      </Text>
+      </ScriptText>
 
       {revealed ? (
         <View style={styles.answer} testID="card-answer">
           {showLatin ? (
-            <Text style={styles.latin} testID="card-lat">
+            <ScriptText role="lat" style={styles.latin} testID="card-lat">
               {cyrToLat(card.sr_cyr)}
-            </Text>
+            </ScriptText>
           ) : null}
-          <Text style={styles.english} testID="card-en">
+          <ScriptText role="en" style={styles.english} testID="card-en">
             {card.en}
-          </Text>
+          </ScriptText>
           <View style={styles.metaRow}>
             {[card.pos, card.gender, card.aspect]
               .filter((value): value is string => Boolean(value))
@@ -529,11 +530,17 @@ function WordFace({
 
           <View style={styles.divider} />
 
-          <Text style={styles.exampleCyr} testID="card-example-cyr">
+          <ScriptText role="cyr" style={styles.exampleCyr} testID="card-example-cyr">
             {card.example_cyr}
-          </Text>
-          {showLatin ? <Text style={styles.exampleLat}>{cyrToLat(card.example_cyr)}</Text> : null}
-          <Text style={styles.exampleEn}>{card.example_en}</Text>
+          </ScriptText>
+          {showLatin ? (
+            <ScriptText role="lat" style={styles.exampleLat}>
+              {cyrToLat(card.example_cyr)}
+            </ScriptText>
+          ) : null}
+          <ScriptText role="en" style={styles.exampleEn}>
+            {card.example_en}
+          </ScriptText>
         </View>
       ) : (
         <Text style={styles.hint}>Tap to show the answer</Text>
@@ -559,21 +566,24 @@ function WordFace({
 function LetterFace({ card, revealed }: { card: CardRow; revealed: boolean }) {
   return (
     <>
-      <Text style={styles.letterPair} testID="card-cyr">
+      <ScriptText role="cyr" style={styles.letterPair} testID="card-cyr">
         {card.sr_cyr}
-      </Text>
+      </ScriptText>
 
       {revealed ? (
         <View style={styles.answer} testID="card-answer">
-          <Text style={styles.letterLatin} testID="card-lat">
+          <ScriptText role="lat" style={styles.letterLatin} testID="card-lat">
             {latinLetterPair(card.sr_cyr)}
-          </Text>
+          </ScriptText>
 
           <View style={styles.divider} />
 
-          <Text style={styles.mnemonic} testID="card-en">
+          {/* The mnemonic is English with the example word in Cyrillic inside it
+              — "b as in book — беба (baby)" — so it is split rather than styled
+              whole. */}
+          <MixedText role="en" style={styles.mnemonic} testID="card-en">
             {card.en}
-          </Text>
+          </MixedText>
         </View>
       ) : (
         <Text style={styles.hint}>Tap to show the answer</Text>
@@ -736,16 +746,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   cardTap: { alignSelf: 'stretch', alignItems: 'center', gap: spacing.sm },
-  cyrillic: { fontSize: 44, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  // Colour and face come from `script` (see components/ScriptText.tsx) wherever
+  // the text is content rather than chrome; what is left here is the size,
+  // weight and alignment, which the three-script scheme deliberately leaves
+  // alone.
+  cyrillic: { fontSize: 44, fontWeight: '700', textAlign: 'center' },
   // Deliberately far larger than a word headword: a letter pair is two glyphs,
-  // and the shape of the glyph is the entire thing being learnt.
-  letterPair: { fontSize: 96, lineHeight: 116, fontWeight: '700', color: colors.text, textAlign: 'center' },
-  letterLatin: { fontSize: 48, fontWeight: '600', color: colors.primary, textAlign: 'center' },
-  mnemonic: { fontSize: 17, color: colors.text, textAlign: 'center' },
+  // and the shape of the glyph is the entire thing being learnt. The serif sits
+  // taller than the sans it replaced, hence the roomier line.
+  letterPair: { fontSize: 96, lineHeight: 124, fontWeight: '700', textAlign: 'center' },
+  letterLatin: { fontSize: 48, fontWeight: '600', textAlign: 'center' },
+  mnemonic: { fontSize: 17, textAlign: 'center' },
   hint: { fontSize: 13, color: colors.textMuted, marginTop: spacing.md },
   answer: { alignItems: 'center', gap: spacing.xs, alignSelf: 'stretch' },
-  latin: { fontSize: 20, color: colors.textMuted },
-  english: { fontSize: 24, fontWeight: '600', color: colors.primary, textAlign: 'center' },
+  latin: { fontSize: 20 },
+  english: { fontSize: 24, fontWeight: '600', textAlign: 'center' },
   metaRow: { flexDirection: 'row', gap: spacing.xs, marginTop: spacing.xs },
   meta: {
     fontSize: 12,
@@ -758,9 +773,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   divider: { height: 1, alignSelf: 'stretch', backgroundColor: colors.border, marginVertical: spacing.sm },
-  exampleCyr: { fontSize: 18, color: colors.text, textAlign: 'center' },
-  exampleLat: { fontSize: 14, color: colors.textMuted, textAlign: 'center' },
-  exampleEn: { fontSize: 14, color: colors.textMuted, textAlign: 'center', fontStyle: 'italic' },
+  exampleCyr: { fontSize: 18, textAlign: 'center' },
+  exampleLat: { fontSize: 14, textAlign: 'center' },
+  exampleEn: { fontSize: 14, textAlign: 'center', fontStyle: 'italic' },
   speakRow: { flexDirection: 'row', gap: spacing.lg, marginTop: spacing.sm },
   revealButton: {
     minHeight: touchTarget,

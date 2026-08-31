@@ -24,6 +24,7 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { GlossSheet } from '@/components/GlossSheet';
+import { MixedText, ScriptText } from '@/components/ScriptText';
 import { api } from '@/lib/api';
 import { describeBookFinishError, PENDING_NOTE } from '@/lib/books';
 import { errorMessage } from '@/lib/errors';
@@ -112,6 +113,9 @@ export default function BookScreen() {
   }
 
   const title = book.title_cyr ?? book.title_en;
+  // A book with a Cyrillic title is Serbian content and is set as such; one
+  // known only by its English title is not, and keeps the heading style.
+  const titleRole = book.title_cyr ? 'cyr' : 'en';
 
   // A book still waiting on its transcription has nothing to read, and saying
   // so is the whole answer — there is no half-readable state to offer.
@@ -119,7 +123,9 @@ export default function BookScreen() {
     return (
       <View style={styles.centred}>
         <Stack.Screen options={{ title }} />
-        <Text style={styles.title}>{title}</Text>
+        <ScriptText role={titleRole} style={styles.title}>
+          {title}
+        </ScriptText>
         <Text style={styles.muted} testID="book-waiting">
           {PENDING_NOTE}
         </Text>
@@ -143,17 +149,17 @@ export default function BookScreen() {
 
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.content}>
-          <Text style={styles.title} testID="book-title">
+          <ScriptText role={titleRole} style={styles.title} testID="book-title">
             {title}
-          </Text>
+          </ScriptText>
           <Text style={styles.meta} testID="book-meta">
             {allPages.length > 0 ? `Page ${currentIndex + 1} of ${allPages.length}` : 'No pages'}
             {finished ? ' · Finished' : ''}
           </Text>
           {book.source === 'claude' ? (
-            <Text style={styles.meta} testID="book-rendering">
+            <MixedText style={styles.meta} testID="book-rendering">
               Claude’s rendering — photograph your copy for the real text
-            </Text>
+            </MixedText>
           ) : null}
 
           {pages.isPending ? (
@@ -178,12 +184,14 @@ export default function BookScreen() {
               This page has not been transcribed yet.
             </Text>
           ) : (
-            <Text style={styles.body} testID="book-page-text">
+            // The whole page is one Cyrillic run, so the role goes on the
+            // wrapper and every token inherits it; only a selected word overrides.
+            <ScriptText role="cyr" style={styles.body} testID="book-page-text">
               {tokens.map((token, index) =>
                 token.tappable ? (
                   <Text
                     key={index}
-                    style={[styles.word, selectedIndex === index && styles.wordSelected]}
+                    style={selectedIndex === index ? styles.wordSelected : null}
                     onPress={() => setSelectedIndex(index)}
                     accessibilityRole="button"
                     testID={`word-${index}`}
@@ -194,7 +202,7 @@ export default function BookScreen() {
                   <Text key={index}>{token.text}</Text>
                 ),
               )}
-            </Text>
+            </ScriptText>
           )}
 
           <View style={styles.pager}>
@@ -294,14 +302,17 @@ const styles = StyleSheet.create({
   centred: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, padding: spacing.md },
   centredBlock: { alignItems: 'center', gap: spacing.sm },
   loading: { marginVertical: spacing.xl },
-  title: { fontSize: 28, fontWeight: '700', color: colors.primary },
+  // The colour is kept here rather than taken from `script`, because a book
+  // known only by its English title is still a title and must not go muted; the
+  // role supplies the serif for the Cyrillic ones and nothing else.
+  title: { fontSize: 28, fontWeight: '700', color: colors.text },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: -spacing.sm },
   /**
-   * The reading surface, matching the story view exactly: 24pt on a 40pt line,
-   * which is what makes an unfamiliar script decodable rather than merely legible.
+   * The reading surface, matching the story view exactly: 24pt on a 42pt line,
+   * which is what makes an unfamiliar script decodable rather than merely
+   * legible — a point roomier than it was, for the serif it is now set in.
    */
-  body: { fontSize: 24, lineHeight: 40, color: colors.text },
-  word: { color: colors.text },
+  body: { fontSize: 24, lineHeight: 42 },
   wordSelected: { color: colors.primary, fontWeight: '700' },
   muted: { fontSize: 14, color: colors.textMuted },
   error: { color: colors.danger, fontSize: 14 },

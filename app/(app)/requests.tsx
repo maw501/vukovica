@@ -27,6 +27,7 @@ import {
   View,
 } from 'react-native';
 
+import { MixedText, ScriptText } from '@/components/ScriptText';
 import { api, type RequestEntry } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { requestTextError } from '@/lib/requests';
@@ -162,9 +163,12 @@ function RequestCard({ row }: { row: RequestEntry }) {
   return (
     <View style={styles.card} testID={`request-${row.id}`}>
       <View style={styles.rowHeader}>
-        <Text style={styles.requestText} testID="request-text">
+        {/* Mixed by construction: a request filed from the reader is the quoted
+            Cyrillic word and the sentence it was read in (`readerRequestText`),
+            wrapped in English. */}
+        <MixedText style={styles.requestText} testID="request-text">
           {row.text_en}
-        </Text>
+        </MixedText>
         <Text
           style={[styles.badge, done ? styles.badgeDone : styles.badgePending]}
           testID={`request-status-${row.status}`}
@@ -175,8 +179,12 @@ function RequestCard({ row }: { row: RequestEntry }) {
 
       {done && row.card ? (
         <View style={styles.answer} testID="request-answer">
-          <Text style={styles.answerCyr}>{row.card.sr_cyr}</Text>
-          <Text style={styles.answerEn}>{row.card.en}</Text>
+          <ScriptText role="cyr" style={styles.answerCyr}>
+            {row.card.sr_cyr}
+          </ScriptText>
+          <ScriptText role="en" style={styles.answerEn}>
+            {row.card.en}
+          </ScriptText>
         </View>
       ) : null}
 
@@ -245,7 +253,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  requestText: { flexShrink: 1, fontSize: 16, color: colors.text },
+  // Colour and face come from `script`; only size and layout live here.
+  requestText: { flexShrink: 1, fontSize: 16 },
   badge: {
     fontSize: 12,
     fontWeight: '700',
@@ -263,8 +272,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm,
   },
-  answerCyr: { fontSize: 22, fontWeight: '700', color: colors.primary },
-  answerEn: { fontSize: 14, color: colors.textMuted },
+  answerCyr: { fontSize: 22, fontWeight: '700' },
+  answerEn: { fontSize: 14 },
   meta: { fontSize: 12, color: colors.textMuted },
   note: { fontSize: 12, color: colors.textMuted },
   muted: { fontSize: 14, color: colors.textMuted, textAlign: 'center' },

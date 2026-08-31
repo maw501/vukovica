@@ -24,6 +24,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { ScriptText } from '@/components/ScriptText';
 import { SpeakButton } from '@/components/SpeakButton';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
@@ -98,9 +99,9 @@ export function GlossSheet({
   return (
     <View style={styles.sheet} testID="word-sheet">
       <View style={styles.sheetHeader}>
-        <Text style={styles.sheetWord} testID="sheet-word">
+        <ScriptText role="cyr" style={styles.sheetWord} testID="sheet-word">
           {word}
-        </Text>
+        </ScriptText>
         <Pressable
           onPress={onClose}
           accessibilityRole="button"
@@ -148,9 +149,15 @@ export function GlossSheet({
 function KnownWord({ card, ttsEnabled }: { card: CardRow; ttsEnabled: boolean }) {
   return (
     <View style={styles.sheetBody} testID="sheet-card">
-      <Text style={styles.wordEn}>{card.en}</Text>
-      <Text style={styles.wordExample}>{card.example_cyr}</Text>
-      <Text style={styles.wordExampleEn}>{card.example_en}</Text>
+      <ScriptText role="en" style={styles.wordEn}>
+        {card.en}
+      </ScriptText>
+      <ScriptText role="cyr" style={styles.wordExample}>
+        {card.example_cyr}
+      </ScriptText>
+      <ScriptText role="en" style={styles.wordExampleEn}>
+        {card.example_en}
+      </ScriptText>
       <View style={styles.sheetFooter}>
         {/* Nothing to add to the deck: the word is already a card, and it
             reaches the queue on its own as a new card. Pre-inserting a
@@ -190,16 +197,16 @@ function UnknownWord({
 }) {
   return (
     <View style={styles.sheetBody} testID="sheet-unknown">
-      <Text style={styles.wordLatin} testID="sheet-transliteration">
+      <ScriptText role="lat" style={styles.wordLatin} testID="sheet-transliteration">
         {latin}
-      </Text>
+      </ScriptText>
       <Text style={styles.muted}>
         This word is not in your deck, so there is no translation for it yet — this is how it
         sounds.
       </Text>
-      <Text style={styles.wordSentence} testID="sheet-sentence">
+      <ScriptText role="cyr" style={styles.wordSentence} testID="sheet-sentence">
         {sentence}
-      </Text>
+      </ScriptText>
 
       <View style={styles.sheetActions}>
         {requested ? (
@@ -263,7 +270,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.sm,
   },
-  sheetWord: { fontSize: 26, fontWeight: '700', color: colors.primary, flexShrink: 1 },
+  // Colour and face come from `script`; only size, weight and layout live here.
+  sheetWord: { fontSize: 26, fontWeight: '700', flexShrink: 1 },
   sheetBody: { gap: spacing.xs },
   sheetFooter: {
     flexDirection: 'row',
@@ -280,11 +288,13 @@ const styles = StyleSheet.create({
   closeText: { fontSize: 20, color: colors.textMuted },
   muted: { fontSize: 14, color: colors.textMuted, flexShrink: 1 },
   error: { color: colors.danger, fontSize: 14 },
-  wordEn: { fontSize: 18, color: colors.text },
-  wordExample: { fontSize: 16, color: colors.text },
-  wordExampleEn: { fontSize: 14, color: colors.textMuted },
-  wordLatin: { fontSize: 24, fontWeight: '600', color: colors.primary },
-  wordSentence: { fontSize: 14, color: colors.textMuted, fontStyle: 'italic' },
+  wordEn: { fontSize: 18 },
+  wordExample: { fontSize: 16 },
+  wordExampleEn: { fontSize: 14 },
+  wordLatin: { fontSize: 24, fontWeight: '600' },
+  // Serbian, so it is set as Serbian; the italic and the small size are what
+  // keep it reading as the context rather than the answer.
+  wordSentence: { fontSize: 14, fontStyle: 'italic' },
   sheetActions: { gap: spacing.sm, marginTop: spacing.xs },
   requestButton: {
     minHeight: touchTarget,

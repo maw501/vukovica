@@ -25,6 +25,7 @@ import {
   View,
 } from 'react-native';
 
+import { ScriptText } from '@/components/ScriptText';
 import { api } from '@/lib/api';
 import {
   KEYBOARD_ONLY_CYRILLIC,
@@ -42,7 +43,8 @@ import {
 } from '@/lib/drills';
 import { errorMessage } from '@/lib/errors';
 import { LETTER_TOTAL, masteredLetters } from '@/lib/stages';
-import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
+import type { ScriptRole } from '@/lib/script';
+import { colors, contentMaxWidth, radius, script, spacing, touchTarget } from '@/lib/theme';
 import { cyrToLat } from '@/lib/transliterate';
 import type { CardRow, DrillStatRow } from '@/lib/types';
 
@@ -67,6 +69,23 @@ function expectedAnswer(card: CardRow, mode: Mode): string {
 /** The word as shown at the top of the card. */
 function prompt(card: CardRow, mode: Mode): string {
   return mode === 'cyr-lat' ? card.sr_cyr : cyrToLat(card.sr_cyr);
+}
+
+/**
+ * Which script the drill is *asking for*, and so which the typed answer, the
+ * marked answer and the input itself are in. The prompt is the other one.
+ *
+ * Both directions are on screen at once — the word to read at the top, the
+ * answer being typed below it — so styling them by role rather than by position
+ * is what stops the two blurring into each other mid-round.
+ */
+function answerRole(mode: Mode): ScriptRole {
+  return mode === 'cyr-lat' ? 'lat' : 'cyr';
+}
+
+/** The script the prompt is in: the opposite of the answer's. */
+function promptRole(mode: Mode): ScriptRole {
+  return mode === 'cyr-lat' ? 'cyr' : 'lat';
 }
 
 export default function TrainerScreen() {
@@ -394,15 +413,20 @@ export default function TrainerScreen() {
         {banner}
 
         <View style={styles.card}>
-          <Text style={styles.promptWord} testID="drill-prompt">
+          <ScriptText role={promptRole(mode)} style={styles.promptWord} testID="drill-prompt">
             {prompt(card, mode)}
-          </Text>
-          <Text style={styles.promptEn}>{card.en}</Text>
+          </ScriptText>
+          <ScriptText role="en" style={styles.promptEn}>
+            {card.en}
+          </ScriptText>
 
           <TextInput
             ref={inputRef}
+            // The box is typed into in one script, and says which by looking
+            // like it: terracotta sans for Latin, dark serif for Cyrillic.
             style={[
               styles.input,
+              script[answerRole(mode)],
               marked ? (marked.correct ? styles.inputRight : styles.inputWrong) : null,
             ]}
             value={typed}
@@ -445,10 +469,10 @@ export default function TrainerScreen() {
               <Text style={[styles.verdict, marked.correct ? styles.verdictRight : styles.verdictWrong]}>
                 {marked.correct ? 'Correct' : 'Not quite'}
               </Text>
-              <MarkedAnswer expected={expected} score={marked} />
-              <Text style={styles.otherScript}>
+              <MarkedAnswer expected={expected} score={marked} role={answerRole(mode)} />
+              <ScriptText role={promptRole(mode)} style={styles.otherScript}>
                 {mode === 'cyr-lat' ? card.sr_cyr : cyrToLat(card.sr_cyr)}
-              </Text>
+              </ScriptText>
             </View>
           ) : null}
         </View>
@@ -562,32 +586,36 @@ function WeakLetters({ deltas }: { deltas: LetterDelta[] }) {
  * marks come back per Cyrillic letter, and the segments say which slice of the
  * Latin spelling ("dž") each of them owns.
  */
-function MarkedAnswer({ expected, score }: { expected: string; score: AttemptScore }) {
+function MarkedAnswer({
+  expected,
+  score,
+  role,
+}: {
+  expected: string;
+  score: AttemptScore;
+  /** Which script the expected answer is in — `lat` or `cyr`, never `en`. */
+  role: ScriptRole;
+}) {
   const segments = segmentExpected(expected);
   let letterIndex = 0;
 
   return (
-    <Text style={styles.answer} testID="drill-answer">
+    // The role goes on the wrapper and the letters inherit it, so a missed
+    // letter's red-and-underlined mark is the only thing that has to override.
+    <ScriptText role={role} style={styles.answer} testID="drill-answer">
       {segments.map((segment, index) => {
         if (segment.letter === null) {
-          return (
-            <Text key={index} style={styles.answerLetter}>
-              {segment.text}
-            </Text>
-          );
+          return <Text key={index}>{segment.text}</Text>;
         }
         const result = score.perLetter[letterIndex];
         letterIndex += 1;
         return (
-          <Text
-            key={index}
-            style={[styles.answerLetter, result?.correct ? null : styles.answerLetterWrong]}
-          >
+          <Text key={index} style={result?.correct ? null : styles.answerLetterWrong}>
             {segment.text}
           </Text>
         );
       })}
-    </Text>
+    </ScriptText>
   );
 }
 
@@ -636,8 +664,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
   },
-  promptWord: { fontSize: 40, fontWeight: '700', color: colors.text, textAlign: 'center' },
-  promptEn: { fontSize: 15, color: colors.textMuted, marginBottom: spacing.sm },
+  // Colour and face come from `script`; only size, weight and layout live here.
+  promptWord: { fontSize: 40, fontWeight: '700', textAlign: 'center' },
+  promptEn: { fontSize: 15, marginBottom: spacing.sm },
   input: {
     alignSelf: 'stretch',
     minHeight: touchTarget,
@@ -669,9 +698,8 @@ const styles = StyleSheet.create({
   verdictRight: { color: '#2F7A4D' },
   verdictWrong: { color: colors.accent },
   answer: { fontSize: 28, letterSpacing: 1 },
-  answerLetter: { color: colors.text },
   answerLetterWrong: { color: colors.accent, fontWeight: '700', textDecorationLine: 'underline' },
-  otherScript: { fontSize: 15, color: colors.textMuted },
+  otherScript: { fontSize: 15 },
   primaryButton: {
     minHeight: touchTarget,
     alignItems: 'center',

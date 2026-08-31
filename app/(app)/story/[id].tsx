@@ -23,6 +23,7 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { GlossSheet } from '@/components/GlossSheet';
+import { ScriptText } from '@/components/ScriptText';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { describeFinishError, sentenceAt, tokenize } from '@/lib/reader';
@@ -103,20 +104,22 @@ export default function StoryScreen() {
 
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.content}>
-          <Text style={styles.title} testID="story-title">
+          <ScriptText role="cyr" style={styles.title} testID="story-title">
             {story.title_cyr}
-          </Text>
+          </ScriptText>
           <Text style={styles.meta} testID="story-meta">
             Level {story.level} · {story.word_count} words
             {finished ? ' · Read' : ''}
           </Text>
 
-          <Text style={styles.body} testID="story-body">
+          {/* The whole body is one Cyrillic run, so the role goes on the wrapper
+              and every token inherits it; only a selected word overrides. */}
+          <ScriptText role="cyr" style={styles.body} testID="story-body">
             {tokens.map((token, index) =>
               token.tappable ? (
                 <Text
                   key={index}
-                  style={[styles.word, selectedIndex === index && styles.wordSelected]}
+                  style={selectedIndex === index ? styles.wordSelected : null}
                   onPress={() => setSelectedIndex(index)}
                   accessibilityRole="button"
                   testID={`word-${index}`}
@@ -127,7 +130,7 @@ export default function StoryScreen() {
                 <Text key={index}>{token.text}</Text>
               ),
             )}
-          </Text>
+          </ScriptText>
 
           {finished ? (
             <Text style={styles.muted} testID="story-read-only">
@@ -191,15 +194,16 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   centred: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  title: { fontSize: 28, fontWeight: '700', color: colors.primary },
+  // Colour and face come from `script`; only size, weight and layout live here.
+  title: { fontSize: 28, fontWeight: '700' },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: -spacing.sm },
   /**
    * The reading surface. Deliberately larger and airier than anything else in
-   * the app: 24pt with a 40pt line height is what makes an unfamiliar script
-   * decodable rather than merely legible.
+   * the app: 24pt on a 42pt line is what makes an unfamiliar script decodable
+   * rather than merely legible — a point roomier than it was, because the serif
+   * it is now set in sits taller than the sans it replaced.
    */
-  body: { fontSize: 24, lineHeight: 40, color: colors.text },
-  word: { color: colors.text },
+  body: { fontSize: 24, lineHeight: 42 },
   wordSelected: { color: colors.primary, fontWeight: '700' },
   muted: { fontSize: 14, color: colors.textMuted },
   error: { color: colors.danger, fontSize: 14 },
