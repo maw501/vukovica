@@ -167,7 +167,7 @@ function nextRung<T extends number>(rungs: readonly T[], count: number): T {
  *
  * Alphabet gates everything: it is the first stage and it runs "until all thirty
  * are mastered", so a learner with plenty of words but a shaky letter is still
- * sent back to the trainer. Above it, the highest satisfied stage wins.
+ * sent back to the alphabet. Above it, the highest satisfied stage wins.
  *
  * Books deliberately does *not* turn on `booksFinished`: it is the stage in
  * which he reads real books, so finishing one must not end it.

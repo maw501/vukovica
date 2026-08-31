@@ -50,12 +50,12 @@ interface Activity {
 const ACTIVITIES: Record<ActivityKey, Activity> = {
   trainer: {
     label: 'Cyrillic trainer',
-    blurb: 'Type the alphabet until it is second nature',
+    blurb: 'Type whole words back — proves your letters',
     href: '/trainer',
   },
   letters: {
     label: 'Letters',
-    blurb: 'Flashcards for the azbuka, five a day',
+    blurb: 'Learn the alphabet — flashcards with audio, five a day',
     // Same review screen, filtered to `kind = 'letter'`. Word reviews and
     // letter reviews never share a session queue (spec §4).
     href: '/review?deck=letters',
@@ -84,12 +84,14 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
  * The order the rows are listed in: the stages in path order, then the two
  * tools. Neither the deck nor the capture queue is a stage — they are what the
  * stages are worked with. Letters sits with the trainer, because both are the
- * alphabet, and Grammar sits after Review, because conjugations are what the
- * words are put to work in and it is read before it is read *with*.
+ * alphabet, and it comes first, because the flashcards are where the alphabet is
+ * learned and the trainer is where it is proved. Grammar sits after Review,
+ * because conjugations are what the words are put to work in and it is read
+ * before it is read *with*.
  */
 const ACTIVITY_ORDER: readonly ActivityKey[] = [
-  'trainer',
   'letters',
+  'trainer',
   'review',
   'grammar',
   'reader',
@@ -98,9 +100,15 @@ const ACTIVITY_ORDER: readonly ActivityKey[] = [
   'requests',
 ];
 
-/** The activity each stage's primary button points at. */
+/**
+ * The activity each stage's primary button points at.
+ *
+ * Alphabet leads with the letters deck, not the trainer: a beginner who has met
+ * none of the thirty needs the flashcards that teach them, and the trainer —
+ * which drills whole words — is the test that comes after, one row down.
+ */
 const STAGE_ACTIVITY: Record<Stage, ActivityKey> = {
-  alphabet: 'trainer',
+  alphabet: 'letters',
   words: 'review',
   reading: 'reader',
   books: 'books',
