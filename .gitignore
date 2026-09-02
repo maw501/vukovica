@@ -45,3 +45,4 @@ supabase/.env.local
 .superpowers/
 .playwright-mcp/
 .vercel
+recordings/
