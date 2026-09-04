@@ -471,7 +471,9 @@ Against the production domain, in a browser:
 | --- | --- |
 | `/` | dashboard; **Alphabet** stage; rows for Letters, Grammar, Reader, Books, Deck, Requests |
 | `/review` | a word card, with a speaker button |
-| `/review?deck=letters` | a letter pair («А а»), with a speaker button |
+| `/letters` | the drill: a letter pair, a speaker button, "Show the answer", then "Not yet" / "Got it" |
+| `/alphabet` | thirty rows in azbuka order; tap one to hear it |
+| `/review?deck=letters` | redirects to `/letters` (the old link, kept working) |
 | `/trainer` | a drill |
 | `/grammar` | twelve topics |
 | `/grammar/to-be` | the explanation, and a drill that starts — and **reload it**, for the rewrite (the least-proven of the three) |

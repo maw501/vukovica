@@ -11,13 +11,34 @@ import {
   type Progress,
   type ProgressInputs,
 } from '@/lib/stages';
+import { LETTER_SOLID_STREAK } from '@/lib/letters';
 import { cyrToLat } from '@/lib/transliterate';
-import type { DrillStatRow } from '@/lib/types';
+import type { DrillStatRow, LetterStatRow } from '@/lib/types';
 
 const USER = '00000000-0000-0000-0000-000000000001';
 
 function stat(letter: string, attempts: number | null, correct: number | null): DrillStatRow {
   return { user_id: USER, letter, attempts, correct };
+}
+
+/**
+ * A `letter_stats` row, keyed the way the drill keys them: by the printed pair.
+ * `solid` at or past `LETTER_SOLID_STREAK` is what the stage union looks for.
+ */
+function letterStat(glyph: string, streak: number): LetterStatRow {
+  return {
+    user_id: USER,
+    letter: `${glyph.toUpperCase()} ${glyph}`,
+    easy: streak,
+    hard: 0,
+    streak,
+    last_seen: null,
+  };
+}
+
+/** Those letters solid in the drill, and nothing else. */
+function solid(...glyphs: readonly string[]): LetterStatRow[] {
+  return glyphs.map((glyph) => letterStat(glyph, LETTER_SOLID_STREAK));
 }
 
 /**
@@ -38,6 +59,7 @@ function allMastered(): DrillStatRow[] {
 function progress(over: Partial<ProgressInputs> = {}): Progress {
   return computeProgress({
     drillStats: allMastered(),
+    letterStats: [],
     knownWords: 0,
     storiesRead: 0,
     booksFinished: 0,
@@ -125,9 +147,78 @@ describe('letter mastery', () => {
 
   it('does not mutate its input', () => {
     const stats = [stat('а', 8, 8)];
-    const before = JSON.stringify(stats);
-    computeProgress({ drillStats: stats, knownWords: 5, storiesRead: 2, booksFinished: 0 });
-    expect(JSON.stringify(stats)).toBe(before);
+    const letters = solid('б');
+    const before = JSON.stringify([stats, letters]);
+    computeProgress({
+      drillStats: stats,
+      letterStats: letters,
+      knownWords: 5,
+      storiesRead: 2,
+      booksFinished: 0,
+    });
+    expect(JSON.stringify([stats, letters])).toBe(before);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The union: a letter is done if EITHER the trainer or the drill says so
+//
+// The two bars measure different things -- typing a letter, and recognising it
+// -- so neither subsumes the other. Before this, the Alphabet stage could insist
+// "0 of 30" directly above a drill tile reading "25 of 30 solid".
+// ---------------------------------------------------------------------------
+
+describe('letter mastery counts the drill too', () => {
+  it('counts a letter solid in the drill that the trainer has never seen', () => {
+    expect(progress({ drillStats: [], letterStats: solid('а', 'б') }).letterMastery.mastered).toBe(
+      2,
+    );
+  });
+
+  it('still counts a letter mastered in the trainer that the drill has never seen', () => {
+    expect(
+      progress({ drillStats: [stat('а', 8, 8)], letterStats: [] }).letterMastery.mastered,
+    ).toBe(1);
+  });
+
+  it('counts a letter both agree on exactly once', () => {
+    expect(
+      progress({ drillStats: [stat('а', 8, 8)], letterStats: solid('а') }).letterMastery.mastered,
+    ).toBe(1);
+  });
+
+  it('does not count a letter the drill is still short of solid on', () => {
+    const nearly = [letterStat('а', LETTER_SOLID_STREAK - 1)];
+    expect(progress({ drillStats: [], letterStats: nearly }).letterMastery.mastered).toBe(0);
+  });
+
+  it('ignores a tally row for something that is not one of the thirty', () => {
+    const junk = [letterStat('q', LETTER_SOLID_STREAK), letterStat('', LETTER_SOLID_STREAK)];
+    expect(progress({ drillStats: [], letterStats: junk }).letterMastery.mastered).toBe(0);
+  });
+
+  it('leaves the alphabet stage when the drill supplies the last letter', () => {
+    const inputs = { drillStats: masteredExcept('ш'), knownWords: 5 };
+    expect(progress(inputs).stage).toBe('alphabet');
+    expect(progress({ ...inputs, letterStats: solid('ш') }).stage).toBe('words');
+  });
+
+  it('drops a drill-solid letter out of the weakest list', () => {
+    const drillStats = masteredExcept('а', 'б', 'в');
+    expect(progress({ drillStats }).letterMastery.weakest).toEqual(['а', 'б', 'в']);
+    expect(progress({ drillStats, letterStats: solid('б') }).letterMastery.weakest).toEqual([
+      'а',
+      'в',
+    ]);
+  });
+
+  it('reads the same union through masteredLetters, for the trainer summary', () => {
+    const set = masteredLetters([stat('а', 8, 8)], solid('б'));
+    expect([...set].sort()).toEqual(['а', 'б']);
+    // Called with drill stats alone -- as the trainer does -- it stays the
+    // trainer's own bar, so the trainer never celebrates a letter it did not
+    // just measure.
+    expect([...masteredLetters([stat('а', 8, 8)])]).toEqual(['а']);
   });
 });
 
@@ -289,17 +380,25 @@ describe('the counts it passes through', () => {
 // ---------------------------------------------------------------------------
 
 describe('nextGoal', () => {
-  it('names the alphabet and how many letters are left', () => {
+  it('names the alphabet, how many are solid and how many are left', () => {
     const goal = progress({ drillStats: masteredExcept('п', 'р', 'с', 'т') }).nextGoal;
-    expect(goal).toContain('Alphabet');
-    expect(goal).toContain('4');
-    expect(goal).toContain('26/30');
+    expect(goal).toBe('Alphabet — 26 of 30 letters solid, 4 to go');
   });
 
-  it('says "letter", not "letters", for the last one', () => {
+  it('says the same thing however the letters were learnt', () => {
+    // Two of the four come from the drill instead: the line must not change
+    // shape, and must not double-count.
+    const goal = progress({
+      drillStats: masteredExcept('п', 'р', 'с', 'т'),
+      letterStats: solid('п', 'р'),
+    }).nextGoal;
+    expect(goal).toBe('Alphabet — 28 of 30 letters solid, 2 to go');
+  });
+
+  it('never asks for zero more letters — the stage ends first', () => {
     const goal = progress({ drillStats: masteredExcept('ш') }).nextGoal;
-    expect(goal).toContain('1 more letter');
-    expect(goal).not.toContain('letters');
+    expect(goal).toBe('Alphabet — 29 of 30 letters solid, 1 to go');
+    expect(goal).not.toContain('0 to go');
   });
 
   it('names the words stage and the 100-word rung', () => {

@@ -21,7 +21,14 @@ import { MixedText, ScriptText } from '@/components/ScriptText';
 import { api } from '@/lib/api';
 import { audioSupported, playAudioPath } from '@/lib/audio';
 import { errorMessage } from '@/lib/errors';
-import { isSolid, letterKey, statsByLetter, solidCount, type LetterStat } from '@/lib/letters';
+import {
+  hintWithoutExample,
+  isSolid,
+  letterKey,
+  statsByLetter,
+  solidCount,
+  type LetterStat,
+} from '@/lib/letters';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import { latinLetterPair } from '@/lib/transliterate';
 import type { CardRow } from '@/lib/types';
@@ -66,9 +73,16 @@ export default function AlphabetScreen() {
         <Text style={styles.intro} testID="alphabet-intro">
           {letters.length} letters, in order. Tap one to hear it.
         </Text>
+        {/*
+          If the tallies did not load, say so. Rendering "0 of 30 solid" from an
+          empty map would be stating as fact the one thing this screen does not
+          know — the same honesty the dashboard's letters row keeps.
+        */}
         <Text style={styles.solidLine} testID="alphabet-solid">
-          {/* Not "mastered": that word belongs to the trainer's harder bar. */}
-          {solid} of {letters.length} solid — got right three times in a row
+          {stats.isError
+            ? 'Could not count how the letters are going.'
+            : // Not "mastered": that word belongs to the trainer's harder bar.
+              `${solid} of ${letters.length} solid — got right three times in a row`}
         </Text>
 
         <View style={styles.list}>
@@ -76,7 +90,9 @@ export default function AlphabetScreen() {
             <LetterRow
               key={card.id}
               card={card}
-              stat={tallies.get(letterKey(card))}
+              // No ticks either while the tallies are unknown: a missing tick
+              // would read as "not solid yet" rather than "not counted".
+              stat={stats.isError ? undefined : tallies.get(letterKey(card))}
               ttsEnabled={settings.data?.tts_enabled ?? true}
             />
           ))}
@@ -146,8 +162,10 @@ function LetterRow({
             {card.example_en}
           </ScriptText>
         </View>
+        {/* Without its trailing "— word (gloss)": that word and its meaning are
+            already on the line directly above. */}
         <MixedText role="en" style={styles.hint}>
-          {card.en}
+          {hintWithoutExample(card.en)}
         </MixedText>
       </View>
 

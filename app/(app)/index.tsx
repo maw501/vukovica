@@ -58,7 +58,7 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
   },
   letters: {
     label: 'Drill the letters',
-    blurb: 'Flashcards with her voice — as many times as you like',
+    blurb: 'Flashcards with real recordings — as many times as you like',
     href: '/letters',
   },
   alphabet: {

@@ -99,6 +99,9 @@ export default function LettersScreen() {
       // `rate_letter` has just written to.
       void queryClient.invalidateQueries({ queryKey: ['xp'] });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      // ...and the Alphabet stage counts a solid letter as one of its thirty
+      // (`masteredLetters`), so the goal line moves on a third "Got it" too.
+      void queryClient.invalidateQueries({ queryKey: ['progress'] });
     },
     onError: (_error, variables) => {
       setFailures((current) => [...current, variables]);
@@ -120,32 +123,45 @@ export default function LettersScreen() {
     setRevealed(false);
   }, []);
 
-  /** Start a fresh run. Never refused: that is the whole point of this screen. */
-  const goAgain = useCallback((onlyTricky: boolean) => {
-    setTrickyOnly(onlyTricky);
-    setFailures([]);
-    setRun(null);
-  }, []);
-
+  /**
+   * Send every rating that has not landed yet, once more.
+   *
+   * The list is cleared first and refilled by `rate.onError`, so a retry that
+   * fails again leaves the banner exactly as it was rather than dropping the
+   * rating on the floor.
+   */
   const retryFailures = useCallback(() => {
     const pending = failures;
     setFailures([]);
     for (const rating of pending) rateRef.current.mutate(rating);
   }, [failures]);
 
+  /**
+   * Start a fresh run. Never refused: that is the whole point of this screen.
+   *
+   * Unsaved ratings are sent again on the way out rather than thrown away. The
+   * old run's answers were real work — they earned XP and moved a streak — and
+   * "Go again" is also what the tricky toggle calls, so a silent `setFailures([])`
+   * here would lose them to a tap that never mentioned them.
+   */
+  const goAgain = useCallback(
+    (onlyTricky: boolean) => {
+      retryFailures();
+      setTrickyOnly(onlyTricky);
+      setRun(null);
+    },
+    [retryFailures],
+  );
+
   const goHome = useCallback(() => {
     if (router.canGoBack()) router.back();
     else router.replace('/');
   }, [router]);
 
-  if (cards.isPending || stats.isPending || settings.isPending || run === null) {
-    return (
-      <View style={styles.centred}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
-
+  // The error branch comes FIRST, deliberately. A failed query is no longer
+  // pending, but the effect above will not build a run without its data, so
+  // `run` stays null for ever — put the pending branch first and the screen
+  // spins for ever while this message sits below it, unreachable.
   if (cards.isError || stats.isError) {
     return (
       <View style={styles.centred}>
@@ -165,6 +181,14 @@ export default function LettersScreen() {
         >
           <Text style={styles.textButtonLabel}>Try again</Text>
         </Pressable>
+      </View>
+    );
+  }
+
+  if (cards.isPending || stats.isPending || settings.isPending || run === null) {
+    return (
+      <View style={styles.centred}>
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }
@@ -355,8 +379,15 @@ function RunSummary({
               ? 'Every one of them!'
               : 'Run finished'}
         </Text>
+        {/*
+          The tally counts every answer given, saved or not — it is the record of
+          the run, and a failed write does not un-answer a card. So when some of
+          them are still stuck, the line says so rather than quietly overstating
+          what reached the database. The banner below offers the retry.
+        */}
         <Text style={styles.summaryLine} testID="letters-summary-line">
           {runSummary(tally)}
+          {failures > 0 ? ` · ${failures} not saved yet` : ''}
         </Text>
 
         {failures > 0 ? (

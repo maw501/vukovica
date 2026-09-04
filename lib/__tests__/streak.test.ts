@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeStreak, longestStreak } from '@/lib/streak';
+import {
+  computeStreak,
+  longestStreak,
+  mergeStudyDayPage,
+  streakFromPages,
+  studyDaysFromPages,
+  type StudyDayPage,
+} from '@/lib/streak';
 
 /**
  * A timestamp `n` local days before `now`, at a given local hour, serialized
@@ -161,5 +168,149 @@ describe('longestStreak', () => {
       localDaysAgo(now, 3), // 30 Aug
     ];
     expect(longestStreak(logs)).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Two ledgers: words in `review_logs`, letters in `xp_events`
+// ---------------------------------------------------------------------------
+
+/** A page fetcher over fixed pages; asks past the end get an empty, exhausted page. */
+function pages(...list: StudyDayPage[]) {
+  const asked: number[] = [];
+  const fetch = async (page: number): Promise<StudyDayPage> => {
+    asked.push(page);
+    return list[page] ?? { timestamps: [], exhausted: true };
+  };
+  return { fetch, asked };
+}
+
+describe('mergeStudyDayPage', () => {
+  it('keeps every timestamp from both ledgers', () => {
+    const { timestamps } = mergeStudyDayPage(['a', 'b'], ['c'], 10);
+    expect(timestamps).toEqual(['a', 'b', 'c']);
+  });
+
+  it('is exhausted only when both ledgers came back short', () => {
+    expect(mergeStudyDayPage(['a'], ['b'], 3).exhausted).toBe(true);
+    // One ledger empty, the other short: still the end of the history.
+    expect(mergeStudyDayPage([], ['b'], 3).exhausted).toBe(true);
+    expect(mergeStudyDayPage([], [], 3).exhausted).toBe(true);
+  });
+
+  it('is not exhausted while EITHER ledger filled its page', () => {
+    // The uneven case that matters: nothing left in `review_logs`, but the XP
+    // ledger is full, so its older rows may still extend the streak.
+    expect(mergeStudyDayPage([], ['a', 'b', 'c'], 3).exhausted).toBe(false);
+    expect(mergeStudyDayPage(['a', 'b', 'c'], [], 3).exhausted).toBe(false);
+    expect(mergeStudyDayPage(['a', 'b', 'c'], ['d', 'e', 'f'], 3).exhausted).toBe(false);
+  });
+});
+
+describe('streakFromPages', () => {
+  it('is 0 with no history at all', async () => {
+    const { fetch } = pages({ timestamps: [], exhausted: true });
+    await expect(streakFromPages(fetch, NOW)).resolves.toBe(0);
+  });
+
+  it('counts a day that only the second ledger knows about', async () => {
+    // Words yesterday and the day before, a letters-only day in between: the
+    // streak is unbroken only because the two ledgers are unioned.
+    const { fetch } = pages({
+      timestamps: [localDaysAgo(NOW, 0), localDaysAgo(NOW, 2)],
+      exhausted: false,
+    });
+    // Words alone would stop at 1 (today), the gap at day 1 ending it.
+    await expect(streakFromPages(fetch, NOW)).resolves.toBe(1);
+
+    const both = pages({
+      timestamps: [localDaysAgo(NOW, 0), localDaysAgo(NOW, 2), localDaysAgo(NOW, 1, 8)],
+      exhausted: false,
+    });
+    await expect(streakFromPages(both.fetch, NOW)).resolves.toBe(3);
+  });
+
+  it('walks back through pages while every fetched day is in the streak', async () => {
+    const { fetch, asked } = pages(
+      { timestamps: [localDaysAgo(NOW, 0), localDaysAgo(NOW, 1)], exhausted: false },
+      { timestamps: [localDaysAgo(NOW, 2), localDaysAgo(NOW, 3)], exhausted: false },
+      { timestamps: [localDaysAgo(NOW, 4), localDaysAgo(NOW, 9)], exhausted: false },
+    );
+    // Page 2 brings a day outside the streak, so page 3 is never asked for.
+    await expect(streakFromPages(fetch, NOW)).resolves.toBe(5);
+    expect(asked).toEqual([0, 1, 2]);
+  });
+
+  it('stops as soon as a page is exhausted, even if it filled one ledger', async () => {
+    const { fetch, asked } = pages({
+      timestamps: [localDaysAgo(NOW, 0), localDaysAgo(NOW, 1)],
+      exhausted: true,
+    });
+    await expect(streakFromPages(fetch, NOW)).resolves.toBe(2);
+    expect(asked).toEqual([0]);
+  });
+
+  it('keeps paging when one ledger is much longer than the other', async () => {
+    // Only the XP ledger has anything left after page 0, and it fills its page
+    // every time — `exhausted` must stay false or the streak is cut short.
+    const { fetch, asked } = pages(
+      { timestamps: [localDaysAgo(NOW, 0)], exhausted: false },
+      { timestamps: [localDaysAgo(NOW, 1)], exhausted: false },
+      { timestamps: [localDaysAgo(NOW, 2)], exhausted: true },
+    );
+    await expect(streakFromPages(fetch, NOW)).resolves.toBe(3);
+    expect(asked).toEqual([0, 1, 2]);
+  });
+
+  it('gives up at maxPages rather than paging for ever', async () => {
+    let page = 0;
+    const fetch = async (): Promise<StudyDayPage> => {
+      const stamps = [localDaysAgo(NOW, page)];
+      page += 1;
+      return { timestamps: stamps, exhausted: false };
+    };
+    await expect(streakFromPages(fetch, NOW, 3)).resolves.toBe(3);
+  });
+
+  it('stops on an empty page even when it is not flagged exhausted', async () => {
+    const { fetch, asked } = pages(
+      { timestamps: [localDaysAgo(NOW, 0)], exhausted: false },
+      { timestamps: [], exhausted: false },
+    );
+    await expect(streakFromPages(fetch, NOW)).resolves.toBe(1);
+    expect(asked).toEqual([0, 1]);
+  });
+});
+
+describe('studyDaysFromPages', () => {
+  it('collects both ledgers with no early exit', async () => {
+    const { fetch, asked } = pages(
+      { timestamps: [localDaysAgo(NOW, 0), localDaysAgo(NOW, 40)], exhausted: false },
+      { timestamps: [localDaysAgo(NOW, 41)], exhausted: true },
+    );
+    const days = await studyDaysFromPages(fetch);
+    // A day far outside the current streak is still collected: the *longest*
+    // streak can be anywhere in the history.
+    expect(days.size).toBe(3);
+    expect(asked).toEqual([0, 1]);
+  });
+
+  it('dedupes a day both ledgers recorded', async () => {
+    const { fetch } = pages({
+      timestamps: [localDaysAgo(NOW, 1, 9), localDaysAgo(NOW, 1, 21)],
+      exhausted: true,
+    });
+    await expect(studyDaysFromPages(fetch)).resolves.toHaveProperty('size', 1);
+  });
+
+  it('honours maxPages', async () => {
+    const { fetch, asked } = pages(
+      { timestamps: [localDaysAgo(NOW, 0)], exhausted: false },
+      { timestamps: [localDaysAgo(NOW, 1)], exhausted: false },
+      { timestamps: [localDaysAgo(NOW, 2)], exhausted: false },
+    );
+    const days = await studyDaysFromPages(fetch, 2);
+    expect(days.size).toBe(2);
+    expect(asked).toEqual([0, 1]);
   });
 });
