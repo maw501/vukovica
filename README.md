@@ -40,10 +40,15 @@ One Expo app shipped as an installable PWA.
   Cyrillic word plus a speaker button; reveal adds Latin transliteration,
   English, grammar metadata and an example sentence. Four grade buttons. A word
   is "known" once it graduates out of learning into `review`.
-- **Letters** — the same FSRS machinery over the 30 letters of the azbuka, as a
-  separate deck (`cards.kind`) with its own queue and its own due count. A
-  letter card shows the pair («Б б») and plays the letter's sound followed by
-  its example word.
+- **Letters** — a drill over the 30 letters of the azbuka, with no scheduling at
+  all: every letter is available every time, and a run can be repeated as often
+  as you like. A card shows the pair («Б б») and plays the letter's sound
+  followed by its example word, in Mark's wife's voice; "Got it" / "Not yet"
+  keeps a tally in `letter_stats`, which orders the next run (shakiest first)
+  and marks a letter solid at three right in a row. A rating pays the same 2 XP
+  a word review pays and counts towards the same day streak.
+- **The alphabet** — all thirty on one page, in order, with the word and the
+  hint for each and a tap to hear it. The reference page to the drill's practice.
 - **Trainer** — deterministic transliteration drills in both directions. Every
   answer is marked letter by letter, and per-letter accuracy biases the next
   round towards the weak ones (ђ, ћ, џ, љ, њ…). A letter is mastered at 8
@@ -106,7 +111,9 @@ app/                 expo-router routes
   _layout.tsx          providers + the auth gate
   (auth)/sign-in.tsx
   (app)/index.tsx      dashboard (stage, goal, primary action)
-  (app)/review.tsx     FSRS session; ?deck=letters is the letters queue
+  (app)/review.tsx     FSRS session over the word deck
+  (app)/letters.tsx    the letters drill (no scheduling; letter_stats tallies)
+  (app)/alphabet.tsx   the alphabet, all thirty, with audio
   (app)/trainer.tsx    Cyrillic drills + letter mastery
   (app)/grammar.tsx    the twelve topics
   (app)/grammar/[slug].tsx   one topic: explanation, then its drill
@@ -257,7 +264,7 @@ unique Cyrillic form, so it is safe to re-run after adding cards to either JSON.
 
 The alphabet (30 letter cards) and the twelve grammar topics are *not* seeded
 here. They ship in migrations, so `db:migrate` alone gives you a database the
-letters deck and the grammar section already work in.
+letters drill and the grammar section already work in.
 
 The book and the stories belong to an account, so they wait until you have one
 (step 3):

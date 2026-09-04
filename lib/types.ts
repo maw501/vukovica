@@ -124,6 +124,24 @@ export interface DrillStatRow {
 }
 
 /**
+ * A row of `public.letter_stats` — the letters drill's per-letter tally.
+ *
+ * Not to be confused with `DrillStatRow`: that one is the Cyrillic *trainer's*
+ * typing accuracy, keyed by a single lowercase glyph. `letter` here is the
+ * card's `sr_cyr`, the pair as printed ("Б б"), and the counts are flashcard
+ * ratings. Nothing in this row can make a letter unavailable to practise — it
+ * only orders a run and marks a letter solid.
+ */
+export interface LetterStatRow {
+  user_id: string;
+  letter: string;
+  easy: number | null;
+  hard: number | null;
+  streak: number | null;
+  last_seen: string | null;
+}
+
+/**
  * A row of `public.stories` — the graded reader's library.
  *
  * Mirrors `supabase/migrations/20260830140000_stories.sql`. Stories are seeded

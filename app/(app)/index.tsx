@@ -24,15 +24,16 @@ import { MixedText } from '@/components/ScriptText';
 import { XpRing } from '@/components/XpRing';
 import { api, DEFAULT_NEW_PER_DAY } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
-import { deckAllowance } from '@/lib/queue';
+import { solidCount, statsByLetter } from '@/lib/letters';
 import type { Stage } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import { DAILY_GOAL } from '@/lib/xp';
 
-/** The eight places the dashboard can send the learner. */
+/** The nine places the dashboard can send the learner. */
 type ActivityKey =
   | 'trainer'
   | 'letters'
+  | 'alphabet'
   | 'review'
   | 'grammar'
   | 'reader'
@@ -55,11 +56,14 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
     href: '/trainer',
   },
   letters: {
-    label: 'Letters',
-    blurb: 'Learn the alphabet — flashcards with audio, five a day',
-    // Same review screen, filtered to `kind = 'letter'`. Word reviews and
-    // letter reviews never share a session queue (spec §4).
-    href: '/review?deck=letters',
+    label: 'Drill the letters',
+    blurb: 'Flashcards with her voice — as many times as you like',
+    href: '/letters',
+  },
+  alphabet: {
+    label: 'Browse the alphabet',
+    blurb: 'All thirty, with a word for each',
+    href: '/alphabet',
   },
   review: { label: 'Review', blurb: 'Today’s cards', href: '/review' },
   grammar: {
@@ -92,6 +96,7 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
  */
 const ACTIVITY_ORDER: readonly ActivityKey[] = [
   'letters',
+  'alphabet',
   'trainer',
   'review',
   'grammar',
@@ -115,6 +120,17 @@ const STAGE_ACTIVITY: Record<Stage, ActivityKey> = {
   books: 'books',
 };
 
+/**
+ * The quieter second way in, for a stage that has one.
+ *
+ * The alphabet is the only stage with two halves worth naming at the top of the
+ * screen: the drill is the practice and the browser is the reference, and a
+ * beginner wanting to *look one up* should not have to start a run to do it.
+ */
+const STAGE_SECONDARY: Partial<Record<Stage, ActivityKey>> = {
+  alphabet: 'alphabet',
+};
+
 /** The stage names, as §3 of the phase-3 spec names them. */
 const STAGE_NAME: Record<Stage, string> = {
   alphabet: 'Alphabet',
@@ -136,12 +152,17 @@ export default function DashboardScreen() {
     queryKey: ['progress'],
     queryFn: () => api.getProgress(),
   });
-  // The letters deck's own figures. A separate query rather than part of
-  // `getDashboard`, because the streak is deck-independent and paginates —
-  // there is no sense fetching it twice to label one tile.
-  const letters = useQuery({
-    queryKey: ['deck-stats', 'letters'],
-    queryFn: () => api.getDeckStats('letters'),
+  // The alphabet, and how it is going. Two small reads (thirty rows each) that
+  // the drill and the browser both reuse from the cache, rather than a count
+  // query of their own: there is nothing "due" about a letter any more, so what
+  // this row has to say is how many are solid.
+  const letterCards = useQuery({
+    queryKey: ['letter-cards'],
+    queryFn: () => api.listLetterCards(),
+  });
+  const letterStats = useQuery({
+    queryKey: ['letter-stats'],
+    queryFn: () => api.listLetterStats(),
   });
   // Today's ring and the level. Its own query, shared verbatim with the
   // progress screen, so opening that screen re-uses this entry rather than
@@ -158,19 +179,19 @@ export default function DashboardScreen() {
     ? Math.max(0, Math.min(newPerDay - stats.newDoneToday, stats.newAvailable))
     : 0;
 
-  const lettersDue = letters.data?.dueCount ?? 0;
-  // The letters allowance is fixed rather than the user's setting, so it comes
-  // from `deckAllowance` here rather than from the fetched stats — no second
-  // read of a row this screen already has.
-  const lettersNewLeft = letters.data
-    ? Math.max(
-        0,
-        Math.min(
-          deckAllowance('letters', newPerDay) - letters.data.newDoneToday,
-          letters.data.newAvailable,
-        ),
-      )
-    : 0;
+  const alphabet = letterCards.data ?? [];
+  const lettersSolid = solidCount(alphabet, statsByLetter(letterStats.data ?? []));
+  /**
+   * How the alphabet is going, in one line — for the letters row, and for the
+   * stage's own button when the letters *are* the stage (in which case the row
+   * is not rendered at all, and this is the only place it would be said).
+   */
+  const lettersLine =
+    letterCards.isError || letterStats.isError
+      ? 'Could not count how the letters are going.'
+      : letterCards.data && letterStats.data
+        ? lettersBlurb(lettersSolid, alphabet.length)
+        : undefined;
 
   const requestsPending = (requests.data ?? []).filter((row) => row.status === 'pending').length;
 
@@ -181,8 +202,10 @@ export default function DashboardScreen() {
   // Anything the top of the screen already covers is not repeated as a row:
   // reviews are always covered by the habit card, and the stage's own activity
   // by its primary button.
+  const secondaryKey = stage ? (STAGE_SECONDARY[stage] ?? null) : null;
   const promoted = new Set<ActivityKey>(['review']);
   if (primaryKey) promoted.add(primaryKey);
+  if (secondaryKey) promoted.add(secondaryKey);
   const rows = ACTIVITY_ORDER.filter((key) => !promoted.has(key));
 
   return (
@@ -195,7 +218,8 @@ export default function DashboardScreen() {
             void dashboard.refetch();
             void settings.refetch();
             void progress.refetch();
-            void letters.refetch();
+            void letterCards.refetch();
+            void letterStats.refetch();
             void xp.refetch();
             void requests.refetch();
           }}
@@ -217,6 +241,8 @@ export default function DashboardScreen() {
           stage={stage ?? null}
           goal={progress.data?.nextGoal ?? null}
           primaryKey={primaryKey}
+          primaryBlurb={primaryKey === 'letters' ? lettersLine : undefined}
+          secondaryKey={secondaryKey}
         />
         {progress.isError ? (
           <ErrorCard
@@ -252,14 +278,7 @@ export default function DashboardScreen() {
                 key={key}
                 activityKey={key}
                 activity={ACTIVITIES[key]}
-                badge={lettersDue > 0 ? String(lettersDue) : undefined}
-                blurb={
-                  letters.isError
-                    ? 'Could not count the letters due.'
-                    : letters.data
-                      ? lettersBlurb(lettersDue, lettersNewLeft, letters.data.newAvailable)
-                      : undefined
-                }
+                blurb={lettersLine}
               />
             ) : key === 'requests' ? (
               <ActivityButton
@@ -305,6 +324,8 @@ function DashboardHeader({
   stage,
   goal,
   primaryKey,
+  primaryBlurb,
+  secondaryKey,
 }: {
   streakDays: number;
   /** Today's XP, or null when the ledger could not be read at all. */
@@ -312,9 +333,14 @@ function DashboardHeader({
   stage: Stage | null;
   goal: string | null;
   primaryKey: ActivityKey | null;
+  /** Something live to say under the button, in place of the standing blurb. */
+  primaryBlurb?: string;
+  /** The stage's quieter second way in, if it has one. */
+  secondaryKey: ActivityKey | null;
 }) {
   const router = useRouter();
   const activity = primaryKey ? ACTIVITIES[primaryKey] : null;
+  const secondary = secondaryKey ? ACTIVITIES[secondaryKey] : null;
   const xpSpoken =
     todayXp === null ? 'today’s XP unavailable' : `${todayXp} of ${DAILY_GOAL} XP today`;
 
@@ -380,7 +406,19 @@ function DashboardHeader({
           onPress={() => router.push(activity.href)}
         >
           <Text style={styles.primaryButtonLabel}>{activity.label}</Text>
-          <Text style={styles.primaryButtonBlurb}>{activity.blurb}</Text>
+          <Text style={styles.primaryButtonBlurb}>{primaryBlurb ?? activity.blurb}</Text>
+        </Pressable>
+      ) : null}
+
+      {secondary ? (
+        <Pressable
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={secondary.label}
+          testID="stage-secondary"
+          onPress={() => router.push(secondary.href)}
+        >
+          <Text style={styles.secondaryButtonLabel}>{secondary.label}</Text>
         </Pressable>
       ) : null}
     </View>
@@ -456,19 +494,18 @@ function Stat({
 }
 
 /**
- * The Letters row's second line: what is actually waiting, rather than what the
- * deck is for.
+ * The letters row's second line: how the alphabet is going.
  *
- * `newAvailable` separates "today's five are done" from "the whole azbuka is
- * in circulation" — and an unseeded deck reads as the latter, which is true:
- * there is nothing due, and nothing more to introduce.
+ * Never a count of what is "due" or left for today — there is no such thing here
+ * any more, and there is no evening on which this row should say come back
+ * tomorrow. "Solid" is three right in a row (`LETTER_SOLID_STREAK`), said in
+ * words rather than as a bare fraction.
  */
-function lettersBlurb(due: number, newLeft: number, newAvailable: number): string {
-  const parts: string[] = [];
-  if (due > 0) parts.push(`${due} due`);
-  if (newLeft > 0) parts.push(`${newLeft} new`);
-  if (parts.length > 0) return parts.join(' · ');
-  return newAvailable > 0 ? 'Nothing due — more letters tomorrow' : 'Nothing due today';
+function lettersBlurb(solid: number, total: number): string {
+  if (total === 0) return ACTIVITIES.letters.blurb;
+  if (solid === 0) return `${total} letters, none solid yet`;
+  if (solid >= total) return `All ${total} solid — keep them that way`;
+  return `${solid} of ${total} solid`;
 }
 
 /**
@@ -581,6 +618,17 @@ const styles = StyleSheet.create({
   },
   primaryButtonLabel: { color: colors.primaryOn, fontSize: 22, fontWeight: '700' },
   primaryButtonBlurb: { color: colors.primaryOn, fontSize: 13, opacity: 0.85 },
+  secondaryButton: {
+    minHeight: touchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.surface,
+    marginTop: spacing.xs,
+  },
+  secondaryButtonLabel: { color: colors.primary, fontSize: 16, fontWeight: '600' },
   pressed: { opacity: 0.8 },
   reviewCard: {
     backgroundColor: colors.surface,
