@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CARD_ASPECTS,
+  CARD_ASPECT_HINT,
+  CARD_ASPECT_LABELS,
   EMPTY_CARD_INPUT,
   cardInputErrors,
   toCyrillicHeadword,
@@ -73,5 +76,38 @@ describe('toCyrillicHeadword', () => {
 
   it('is empty for an empty input', () => {
     expect(toCyrillicHeadword('   ')).toBe('');
+  });
+});
+
+/**
+ * The form's wording, not its data. `cards.aspect` still stores "impf" / "pf" —
+ * the seed deck is full of them and the review screen prints them as metadata —
+ * but a beginner filling in a card should never be asked to know what they mean.
+ */
+describe('the verb-type labels', () => {
+  it('names every stored aspect', () => {
+    for (const aspect of CARD_ASPECTS) {
+      expect(CARD_ASPECT_LABELS[aspect]).toBeTruthy();
+    }
+    expect(Object.keys(CARD_ASPECT_LABELS).sort()).toEqual([...CARD_ASPECTS].sort());
+  });
+
+  it('says them in English rather than in grammar', () => {
+    const wording = [...Object.values(CARD_ASPECT_LABELS), CARD_ASPECT_HINT].join(' ');
+    for (const jargon of ['impf', 'pf', 'aspect', 'perfective', 'imperfective']) {
+      expect(wording.toLowerCase()).not.toContain(jargon);
+    }
+  });
+
+  it('keeps the stored values themselves untouched', () => {
+    // The labels are a display concern only: changing these would need a data
+    // migration and would break `data/seed-deck.json`.
+    expect([...CARD_ASPECTS]).toEqual(['impf', 'pf']);
+  });
+
+  it('explains the two choices in one line', () => {
+    for (const label of Object.values(CARD_ASPECT_LABELS)) {
+      expect(CARD_ASPECT_HINT).toContain(label);
+    }
   });
 });

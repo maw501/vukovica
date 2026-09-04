@@ -12,6 +12,8 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { ScriptText } from '@/components/ScriptText';
 import {
   CARD_ASPECTS,
+  CARD_ASPECT_HINT,
+  CARD_ASPECT_LABELS,
   CARD_DOMAINS,
   CARD_GENDERS,
   CARD_POS,
@@ -103,9 +105,14 @@ export function CardForm({
           allowNone
           testIDPrefix="form-gender"
         />
+        {/* "Aspect", "impf" and "pf" were the last piece of linguistics left in
+            the app's own wording. The column still stores them; the picker says
+            what they mean instead. */}
         <Chips
-          label="Aspect"
+          label="Verb type"
           options={CARD_ASPECTS}
+          labels={CARD_ASPECT_LABELS}
+          hint={CARD_ASPECT_HINT}
           value={value.aspect}
           onSelect={(next) => set('aspect', next)}
           allowNone
@@ -224,6 +231,8 @@ function Field({
 function Chips({
   label,
   options,
+  labels,
+  hint,
   value,
   onSelect,
   allowNone,
@@ -232,6 +241,14 @@ function Chips({
 }: {
   label: string;
   options: readonly string[];
+  /**
+   * What to call each option, where the stored value is not the right word to
+   * put in front of a learner. The `testID` keeps the stored value, so a test
+   * (or a script) still addresses a chip by what it writes.
+   */
+  labels?: Readonly<Record<string, string>>;
+  /** One line under the row, saying what the choices mean. */
+  hint?: string;
   value: string | null;
   onSelect: (value: string | null) => void;
   allowNone?: boolean;
@@ -253,13 +270,14 @@ function Chips({
         {options.map((option) => (
           <Chip
             key={option}
-            label={option}
+            label={labels?.[option] ?? option}
             selected={value === option}
             onPress={() => onSelect(option)}
             testID={`${testIDPrefix}-${option}`}
           />
         ))}
       </View>
+      {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
       {error ? <Text style={styles.fieldError}>{error}</Text> : null}
     </View>
   );
@@ -304,6 +322,7 @@ const styles = StyleSheet.create({
   formTitle: { fontSize: 26, fontWeight: '700', color: colors.text },
   field: { gap: spacing.xs },
   fieldLabel: { fontSize: 13, color: colors.textMuted },
+  fieldHint: { fontSize: 12, color: colors.textMuted },
   fieldError: { fontSize: 12, color: colors.danger },
   derived: { fontSize: 12, color: colors.textMuted, marginTop: -spacing.xs },
   input: {

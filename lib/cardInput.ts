@@ -49,7 +49,32 @@ export const CARD_POS = [
 ] as const;
 
 export const CARD_GENDERS = ['m', 'f', 'n'] as const;
+
+/**
+ * The verb aspect, as `cards.aspect` stores it. The stored values are the
+ * linguists' — they are what the seed deck holds and what the review screen's
+ * metadata row prints — but nothing in the *form* says them out loud; see
+ * `CARD_ASPECT_LABELS`.
+ */
 export const CARD_ASPECTS = ['impf', 'pf'] as const;
+
+/**
+ * What the picker calls each aspect.
+ *
+ * "impf" and "pf" are exactly the linguistic jargon this app is meant not to
+ * make a beginner learn: the app is English chrome over Serbian content, and a
+ * label a learner has to look up is chrome that failed. The distinction itself
+ * is worth having — it is the difference between "I was reading" and "I read
+ * it" — so it is said in the words that describe it rather than the words that
+ * name it. The stored values are untouched.
+ */
+export const CARD_ASPECT_LABELS: Readonly<Record<(typeof CARD_ASPECTS)[number], string>> = {
+  impf: 'ongoing',
+  pf: 'one-off',
+};
+
+/** The one line under the picker that says what the two choices mean. */
+export const CARD_ASPECT_HINT = 'ongoing = happening or repeated · one-off = done once';
 
 export const EMPTY_CARD_INPUT: CardInput = {
   sr_cyr: '',
