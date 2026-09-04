@@ -23,6 +23,7 @@ import {
 import { gradeCard, newUserCard, type ReviewGrade } from '@/lib/fsrs';
 import { BUMP_GRAMMAR_STATS_FN, bumpGrammarStatsParams } from '@/lib/grammar';
 import { RATE_LETTER_FN, rateLetterParams } from '@/lib/letters';
+import { MARK_KNOWN_FN, markKnownParams, type LibraryEntry } from '@/lib/library';
 import { buildQueue } from '@/lib/queue';
 import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
 import { computeProgress, type Progress } from '@/lib/stages';
@@ -646,6 +647,74 @@ function duplicateHeadword(error: { code?: string }, srCyr: string): unknown {
 async function deleteCard(id: string): Promise<void> {
   const { error } = await supabase.from('cards').delete().eq('id', id);
   if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// My words — the library of what has actually been studied
+// ---------------------------------------------------------------------------
+
+/**
+ * Every word the user has studied, with the card it is a row for.
+ *
+ * The deck browser's question is "what is in the app"; this is the other one,
+ * "what have I learnt", and the difference is exactly `user_cards`: a row exists
+ * only because the word has been answered at least once (or declared known,
+ * below). `lib/library.ts` splits them into Known and Still learning.
+ *
+ * One select with the card embedded, like `getQueue`, rather than a read per
+ * card. The same `MAX_ROWS` caveat applies and is looser here: the cap is
+ * PostgREST's 1000, and this can only return as many rows as there are cards
+ * studied — 724 in the whole deck today. If the deck ever outgrows 1000, this
+ * needs paginating, and the header would silently under-count until it does.
+ */
+async function getLibrary(): Promise<LibraryEntry[]> {
+  const userId = await requireUserId();
+  const { data, error } = await supabase
+    .from('user_cards')
+    // `!inner` rather than a plain embed so the deck filter applies to the
+    // joined card. The FK is `not null`, so the join drops nothing.
+    .select('*, cards!inner(*)')
+    .eq('user_id', userId)
+    // Words only. Letters have not lived in this table since
+    // 20260904120000_letter_stats.sql, and a stray one would be shown here as a
+    // word he knows — which is the trainer's question, not this screen's.
+    .eq('cards.kind', WORD_KIND)
+    .limit(MAX_ROWS)
+    .returns<DueJoinRow[]>();
+  if (error) throw error;
+
+  const entries: LibraryEntry[] = [];
+  for (const row of data ?? []) {
+    const card = embeddedCard(row);
+    if (!card || card.kind !== WORD_KIND) continue; // Unreachable: the FK and the filter.
+    const { cards: _embedded, ...userCard } = row;
+    entries.push({ card, userCard });
+  }
+  return entries;
+}
+
+/**
+ * "I already know this": park a word as known without grading it four times.
+ *
+ * Through `mark_known` rather than an upsert because `reps = greatest(reps, 1)`
+ * reads the row it writes, which PostgREST's replace-the-row upsert cannot do.
+ * The function pays no XP, deliberately — this is a word being declared, not a
+ * word being studied.
+ */
+async function markKnown(cardId: string): Promise<UserCardRow> {
+  const { data, error } = await supabase
+    .rpc(MARK_KNOWN_FN, markKnownParams(cardId))
+    // The function returns `public.user_cards`, i.e. one row rather than a set,
+    // so PostgREST answers with a bare object -- `.single()` is what tells
+    // supabase-js to type it as one.
+    .single<UserCardRow>();
+  if (error) throw error;
+  // The review screen feeds this back into the rows it is holding, so a
+  // response that is not a row would corrupt the next answer rather than fail.
+  if (!data || typeof data.card_id !== 'string') {
+    throw new Error('The server did not return the saved card. The word may not be marked known.');
+  }
+  return data;
 }
 
 // ---------------------------------------------------------------------------
@@ -1521,6 +1590,8 @@ async function recordGrammarRun(
   return data as GrammarStatRow;
 }
 
+export type { LibraryEntry } from '@/lib/library';
+
 export const api = {
   getSettings,
   updateSettings,
@@ -1531,6 +1602,8 @@ export const api = {
   addCard,
   updateCard,
   deleteCard,
+  getLibrary,
+  markKnown,
   listDrillStats,
   recordDrillAttempts,
   listLetterCards,
