@@ -159,9 +159,11 @@ export interface DeckStats {
 export interface DashboardStats extends DeckStats {
   /**
    * Consecutive local days with at least one piece of studying, ending today or
-   * yesterday. Activity-independent on purpose -- the streak is the habit, not
-   * the deck: a day spent drilling the alphabet counts exactly as a day spent
-   * reviewing words does.
+   * yesterday. Words and letters alike -- the streak is the habit, not the
+   * deck: a day spent drilling the alphabet counts exactly as a day spent
+   * reviewing words does. The boundary is `kind = 'review'` on `xp_events`
+   * (plus `review_logs`): a day of only the trainer, grammar or stories does
+   * not count.
    */
   streakDays: number;
 }

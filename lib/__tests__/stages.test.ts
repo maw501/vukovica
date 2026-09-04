@@ -382,7 +382,7 @@ describe('the counts it passes through', () => {
 describe('nextGoal', () => {
   it('names the alphabet, how many are solid and how many are left', () => {
     const goal = progress({ drillStats: masteredExcept('п', 'р', 'с', 'т') }).nextGoal;
-    expect(goal).toBe('Alphabet — 26 of 30 letters solid, 4 to go');
+    expect(goal).toBe('Alphabet — 26 of 30 letters mastered, 4 to go');
   });
 
   it('says the same thing however the letters were learnt', () => {
@@ -392,12 +392,12 @@ describe('nextGoal', () => {
       drillStats: masteredExcept('п', 'р', 'с', 'т'),
       letterStats: solid('п', 'р'),
     }).nextGoal;
-    expect(goal).toBe('Alphabet — 28 of 30 letters solid, 2 to go');
+    expect(goal).toBe('Alphabet — 28 of 30 letters mastered, 2 to go');
   });
 
   it('never asks for zero more letters — the stage ends first', () => {
     const goal = progress({ drillStats: masteredExcept('ш') }).nextGoal;
-    expect(goal).toBe('Alphabet — 29 of 30 letters solid, 1 to go');
+    expect(goal).toBe('Alphabet — 29 of 30 letters mastered, 1 to go');
     expect(goal).not.toContain('0 to go');
   });
 

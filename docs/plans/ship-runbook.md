@@ -251,8 +251,8 @@ single-user.
 1. **Register.** Open the site, tap **No account yet? Create one**, and sign up
    with a real email and a password you will not forget. If the project has
    email confirmations on (the hosted default), confirm the link, then sign in.
-   You should land on the dashboard reading **Alphabet**, `Alphabet — master 30
-   more letters (0/30)`, with `724 cards not yet studied` underneath — a
+   You should land on the dashboard reading **Alphabet**, `Alphabet — 0 of 30
+   letters mastered, 30 to go`, with `724 cards not yet studied` underneath — a
    brand-new account is at the start of the path, so the first stage and an
    empty letter count are exactly right.
 

@@ -187,8 +187,12 @@ export type StudyDayPageFetcher = (page: number) => Promise<StudyDayPage>;
 /**
  * The current streak, walking back a page at a time until the answer is settled.
  *
- * Two ways to stop early, and both are sound because every page is older than
- * the one before it:
+ * Two ways to stop early. The first is always sound; the second is sound for
+ * one ledger and, with two ledgers paging in lockstep, only while a page of
+ * each spans more days than the streak — a full 1000-row page of one ledger
+ * over a few days beside a short page of the other could stop a page early.
+ * Unreachable at this deck's size; if it ever matters, make the merge report
+ * each ledger's oldest timestamp and exit only once both pass the break day.
  *
  *  - `exhausted` — there is no more history, in either ledger.
  *  - `days.size > streak` — some day already fetched is *not* part of the

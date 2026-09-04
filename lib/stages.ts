@@ -228,7 +228,7 @@ function nextGoalFor(stage: Stage, progress: Omit<Progress, 'nextGoal'>): string
       // counts a letter the drill calls solid. The stage is Alphabet exactly
       // while `mastered < total`, so "to go" is never zero.
       const { mastered, total } = progress.letterMastery;
-      return `Alphabet — ${mastered} of ${pluralise(total, 'letter', 'letters')} solid, ${total - mastered} to go`;
+      return `Alphabet — ${mastered} of ${pluralise(total, 'letter', 'letters')} mastered, ${total - mastered} to go`;
     }
     case 'words': {
       const target = progress.knownMilestone;
