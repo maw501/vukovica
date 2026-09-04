@@ -26,6 +26,7 @@ import {
 } from 'react-native';
 
 import { CardForm } from '@/components/CardForm';
+import { MarkKnownButton } from '@/components/MarkKnownButton';
 import { MixedText, ScriptText } from '@/components/ScriptText';
 import { api } from '@/lib/api';
 import { EMPTY_CARD_INPUT, toCyrillicHeadword, type CardInput } from '@/lib/cardInput';
@@ -356,6 +357,11 @@ function CardDetail({
       busy={save.isPending || remove.isPending}
       error={save.error ?? remove.error}
       onDelete={confirmDelete}
+      // Not an edit to the card — an assertion about this user's relationship
+      // to it. It writes a `user_cards` row (which adding a card here
+      // deliberately does not) so the word appears under My words at once and
+      // stays out of the queue for a season.
+      extra={<MarkKnownButton cardId={card.id} testID="deck-mark-known" />}
     />
   );
 }

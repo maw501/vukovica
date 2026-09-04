@@ -8,6 +8,7 @@ import {
   isSessionComplete,
   sessionProgress,
   sessionTotalAnswers,
+  skipCurrent,
 } from '@/lib/session';
 
 /** Answer the current card `times` times in a row with the same grade. */
@@ -127,5 +128,37 @@ describe('Again re-inserts the card at the end of the session queue', () => {
 
     const fresh = answerMany(['b'], [1]);
     expect(fresh.order).toEqual(['b', 'b']);
+  });
+});
+
+describe('skipCurrent', () => {
+  it('moves to the next card', () => {
+    const state = skipCurrent(createSession(['a', 'b']));
+    expect(currentCardId(state)).toBe('b');
+    expect(sessionProgress(state)).toEqual({ position: 2, total: 2 });
+  });
+
+  it('counts no answer — a word declared known was not studied', () => {
+    const state = skipCurrent(createSession(['a', 'b']));
+    expect(sessionTotalAnswers(state)).toBe(0);
+    expect(state.counts).toEqual({ 1: 0, 2: 0, 3: 0, 4: 0 });
+  });
+
+  it('never re-queues the skipped card', () => {
+    const state = skipCurrent(createSession(['a']));
+    expect(state.order).toEqual(['a']);
+    expect(isSessionComplete(state)).toBe(true);
+  });
+
+  it('leaves the input untouched', () => {
+    const before = createSession(['a', 'b']);
+    skipCurrent(before);
+    expect(before.index).toBe(0);
+  });
+
+  it('is a no-op once the session is over', () => {
+    const done = skipCurrent(skipCurrent(createSession(['a'])));
+    expect(done.index).toBe(1);
+    expect(isSessionComplete(done)).toBe(true);
   });
 });

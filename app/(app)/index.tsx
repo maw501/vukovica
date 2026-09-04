@@ -29,7 +29,7 @@ import type { Stage } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import { DAILY_GOAL } from '@/lib/xp';
 
-/** The nine places the dashboard can send the learner. */
+/** The ten places the dashboard can send the learner. */
 type ActivityKey =
   | 'trainer'
   | 'letters'
@@ -39,6 +39,7 @@ type ActivityKey =
   | 'reader'
   | 'books'
   | 'deck'
+  | 'library'
   | 'requests';
 
 interface Activity {
@@ -78,6 +79,11 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
     href: '/books',
   },
   deck: { label: 'Deck', blurb: 'Browse, edit and add words', href: '/deck' },
+  library: {
+    label: 'My words',
+    blurb: 'The words you have learnt so far',
+    href: '/library',
+  },
   requests: {
     label: 'Requests',
     blurb: 'Ask how to say something in Serbian',
@@ -103,6 +109,9 @@ const ACTIVITY_ORDER: readonly ActivityKey[] = [
   'reader',
   'books',
   'deck',
+  // Beside the deck, because the two answer the neighbouring questions: the
+  // deck is every card in the app, and this is the ones he knows.
+  'library',
   'requests',
 ];
 
@@ -279,6 +288,19 @@ export default function DashboardScreen() {
                 activityKey={key}
                 activity={ACTIVITIES[key]}
                 blurb={lettersLine}
+              />
+            ) : key === 'library' ? (
+              <ActivityButton
+                key={key}
+                activityKey={key}
+                activity={ACTIVITIES[key]}
+                blurb={
+                  progress.isError
+                    ? undefined
+                    : progress.data
+                      ? libraryBlurb(progress.data.knownWords)
+                      : undefined
+                }
               />
             ) : key === 'requests' ? (
               <ActivityButton
@@ -506,6 +528,17 @@ function lettersBlurb(solid: number, total: number): string {
   if (solid === 0) return `${total} letters, none solid yet`;
   if (solid >= total) return `All ${total} solid — keep them that way`;
   return `${solid} of ${total} solid`;
+}
+
+/**
+ * The "My words" row's second line: how big the vocabulary is.
+ *
+ * The same `knownWords` the Words ladder counts (`computeProgress`), so this row
+ * and the goal line above it can never quote two different numbers.
+ */
+function libraryBlurb(known: number): string {
+  if (known === 0) return ACTIVITIES.library.blurb;
+  return `${known} ${known === 1 ? 'word' : 'words'} known so far`;
 }
 
 /**

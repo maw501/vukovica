@@ -66,6 +66,23 @@ export function sessionTotalAnswers(state: SessionState): number {
 }
 
 /**
+ * Drop the current card and move on, without recording an answer.
+ *
+ * The one caller is "I already know this": the word has just been parked as
+ * known for a season, so re-showing it in this session would be asking about a
+ * card that is no longer in the queue. It is deliberately not an answer — no
+ * grade is tallied and nothing is re-queued, because the session summary counts
+ * *studying*, and declaring a word is not that.
+ *
+ * Returns a new state; the input is untouched. Skipping a finished session is a
+ * no-op.
+ */
+export function skipCurrent(state: SessionState): SessionState {
+  if (currentCardId(state) === null) return state;
+  return { ...state, index: state.index + 1 };
+}
+
+/**
  * Record `grade` for the current card and move on.
  *
  * Grade 1 (Again) also re-queues the card at the end, up to

@@ -68,6 +68,14 @@ One Expo app shipped as an installable PWA.
   page at a time, big Cyrillic, every word tappable.
 - **Deck** — browse and search every card (Cyrillic, Latin or English), edit or
   delete one, and add a word by hand.
+- **My words** — the other half of that question: not what is in the app, but
+  what Mark knows. Every word he has studied, split into **Known** (graduated to
+  `review`, the same rule the Words ladder counts by) and **Still learning**,
+  searchable and sortable, with the example sentence a tap away. A word he
+  already knows without being taught it gets there by one button — "I already
+  know this", on the Deck's card detail and in a review session — which parks the
+  card as known for three months and pays no XP, because declaring a word is not
+  studying one.
 - **Requests** — the capture queue. "How do I say…?" is filed rather than
   answered on the spot, because the useful unit is not an instant gloss but a
   card that joins the rotation. Tapping an unknown word while reading files into
@@ -122,6 +130,7 @@ app/                 expo-router routes
   (app)/books.tsx      the shelf; add a book from photographs
   (app)/book/[id].tsx  reading view, a page at a time
   (app)/deck.tsx       browse / search / edit / add
+  (app)/library.tsx    My words: known / still learning, searchable
   (app)/requests.tsx   the capture queue
   (app)/progress.tsx   streak record, XP, every ladder
   (app)/settings.tsx

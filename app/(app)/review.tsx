@@ -27,6 +27,7 @@ import {
   View,
 } from 'react-native';
 
+import { MarkKnownButton } from '@/components/MarkKnownButton';
 import { ScriptText } from '@/components/ScriptText';
 import { SpeakButton } from '@/components/SpeakButton';
 import { api, type DashboardStats, type QueueEntry } from '@/lib/api';
@@ -41,6 +42,7 @@ import {
   isSessionComplete,
   sessionProgress,
   sessionTotalAnswers,
+  skipCurrent,
   type SessionState,
 } from '@/lib/session';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
@@ -124,6 +126,12 @@ export default function ReviewScreen() {
   const [failures, setFailures] = useState<GradeVars[]>([]);
   /** True between "check for more cards" and the rebuilt session appearing. */
   const [restarting, setRestarting] = useState(false);
+  /**
+   * Words declared known this session, so the summary can say what became of
+   * them. Deliberately not part of `SessionState`: they are not answers, and
+   * the grade tallies must not learn to count something that was never graded.
+   */
+  const [markedKnown, setMarkedKnown] = useState(0);
 
   /**
    * The latest saved row per card. A card answered Again comes round again in
@@ -155,6 +163,7 @@ export default function ReviewScreen() {
     setEntries(new Map(queue.data.map((entry) => [entry.cardId, entry])));
     latestRows.current = new Map(queue.data.map((entry) => [entry.cardId, entry.userCard]));
     answered.current = new Set();
+    setMarkedKnown(0);
     setSession(createSession(queue.data.map((entry) => entry.cardId)));
   }, [queue.data, queue.isFetching, session]);
 
@@ -279,6 +288,21 @@ export default function ReviewScreen() {
     [entry, session, submit],
   );
 
+  /**
+   * "I already know this": the word has just been parked as known for a season,
+   * so it leaves this session there and then.
+   *
+   * No grade is recorded and nothing is re-queued — `mark_known` has already
+   * written the row, and a grade on top of it would reschedule from FSRS and
+   * undo exactly the parking that was asked for. The dashboard, the Words ladder
+   * and My words are refreshed by the button itself.
+   */
+  const markKnown = useCallback(() => {
+    setMarkedKnown((current) => current + 1);
+    setSession((current) => (current ? skipCurrent(current) : current));
+    setRevealed(false);
+  }, []);
+
   const retryFailures = useCallback(() => {
     const pending = failuresRef.current;
     failuresRef.current = [];
@@ -362,6 +386,7 @@ export default function ReviewScreen() {
     return (
       <Summary
         session={session}
+        markedKnown={markedKnown}
         emptyMessage={NOTHING_DUE}
         onDone={() => void goHome()}
         onMore={restart}
@@ -439,7 +464,18 @@ export default function ReviewScreen() {
         </View>
 
         {revealed ? (
-          <GradeButtons entry={entry} latestRow={latestRows.current.get(entry.cardId) ?? null} onGrade={grade} />
+          <>
+            <GradeButtons entry={entry} latestRow={latestRows.current.get(entry.cardId) ?? null} onGrade={grade} />
+            {/* Under the grades, not among them: this is not a fifth answer.
+                Keyed by the card so a failure on one word does not leave its
+                error message sitting under the next. */}
+            <MarkKnownButton
+              key={entry.cardId}
+              cardId={entry.cardId}
+              onMarked={markKnown}
+              testID="review-mark-known"
+            />
+          </>
         ) : (
           <Pressable
             style={({ pressed }) => [styles.revealButton, pressed && styles.pressed]}
@@ -554,6 +590,7 @@ function GradeButtons({
 
 function Summary({
   session,
+  markedKnown,
   emptyMessage,
   onDone,
   onMore,
@@ -562,6 +599,8 @@ function Summary({
   onRetry,
 }: {
   session: SessionState;
+  /** Words declared known rather than answered; not part of the grade tallies. */
+  markedKnown: number;
   /**
    * What to say when the session had nothing in it — including an empty letters
    * deck, before the seed migration has run anywhere.
@@ -575,14 +614,25 @@ function Summary({
   onRetry: () => void;
 }) {
   const total = sessionTotalAnswers(session);
+  // A session spent entirely marking words known is not an empty session, so
+  // "Nothing to study" would be a lie — and neither is it answers, so it gets
+  // its own line rather than being folded into the count.
+  const didSomething = total > 0 || markedKnown > 0;
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <View style={styles.content} testID="summary">
-        <Text style={styles.summaryTitle}>{total === 0 ? 'Nothing to study' : 'Well done!'}</Text>
+        <Text style={styles.summaryTitle}>{didSomething ? 'Well done!' : 'Nothing to study'}</Text>
         <Text style={styles.summarySubtitle} testID="summary-total">
-          {total === 0 ? emptyMessage : `${total} answer${total === 1 ? '' : 's'} in this session`}
+          {didSomething
+            ? `${total} answer${total === 1 ? '' : 's'} in this session`
+            : emptyMessage}
         </Text>
+        {markedKnown > 0 ? (
+          <Text style={styles.summarySubtitle} testID="summary-known">
+            {markedKnown} word{markedKnown === 1 ? '' : 's'} marked as known
+          </Text>
+        ) : null}
 
         {total > 0 ? (
           <View style={styles.summaryRow}>

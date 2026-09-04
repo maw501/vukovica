@@ -6,7 +6,7 @@
  * cannot reach `public.cards` half-filled whichever route it came in by.
  */
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { ScriptText } from '@/components/ScriptText';
@@ -33,6 +33,7 @@ export function CardForm({
   busy,
   error,
   onDelete,
+  extra,
 }: {
   title: string;
   value: CardInput;
@@ -44,6 +45,14 @@ export function CardForm({
   busy: boolean;
   error: unknown;
   onDelete?: () => void;
+  /**
+   * A per-user action the screen wants offered beneath the card's own fields —
+   * "I already know this" on the deck's card detail. Deliberately a slot rather
+   * than another pair of props: what belongs here is about the *user's* relation
+   * to the card, which this form (which edits the shared card itself) has no
+   * business knowing anything about.
+   */
+  extra?: ReactNode;
 }) {
   const [showErrors, setShowErrors] = useState(false);
   const errors = cardInputErrors(value);
@@ -160,6 +169,8 @@ export function CardForm({
         >
           <Text style={styles.textButtonLabel}>{cancelLabel}</Text>
         </Pressable>
+
+        {extra}
 
         {onDelete ? (
           <Pressable

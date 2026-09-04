@@ -48,6 +48,7 @@ export default function AppLayout() {
         <Stack.Screen name="letters" options={{ title: 'Letters' }} />
         <Stack.Screen name="alphabet" options={{ title: 'The alphabet' }} />
         <Stack.Screen name="deck" options={{ title: 'Deck' }} />
+        <Stack.Screen name="library" options={{ title: 'My words' }} />
         <Stack.Screen name="trainer" options={{ title: 'Cyrillic trainer' }} />
         <Stack.Screen name="reader" options={{ title: 'Reader' }} />
         <Stack.Screen name="books" options={{ title: 'Books' }} />
