@@ -64,13 +64,13 @@ update public.cards set
 where sr_cyr = 'Д д' and kind = 'letter';
 
 update public.cards set
-  en = 'soft j, like the ''d y'' in would you; the voiced partner of Ћ — ђон (sole of a shoe)',
+  en = 'soft j, like the ''d y'' in would you; Ћ with a hum behind it — ђон (sole of a shoe)',
   example_cyr = 'ђон',
   example_en = 'sole of a shoe'
 where sr_cyr = 'Ђ ђ' and kind = 'letter';
 
 update public.cards set
-  en = 'e as in bed, never a diphthong — ексер (nail)',
+  en = 'e as in bed, one clean sound, never ay — ексер (nail)',
   example_cyr = 'ексер',
   example_en = 'nail'
 where sr_cyr = 'Е е' and kind = 'letter';
@@ -202,7 +202,7 @@ update public.cards set
 where sr_cyr = 'Ч ч' and kind = 'letter';
 
 update public.cards set
-  en = 'hard j as in judge, the voiced pair of Ч — џеп (pocket)',
+  en = 'hard j as in judge, Ч with a hum behind it — џеп (pocket)',
   example_cyr = 'џеп',
   example_en = 'pocket'
 where sr_cyr = 'Џ џ' and kind = 'letter';

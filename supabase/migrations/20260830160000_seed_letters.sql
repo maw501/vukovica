@@ -67,8 +67,8 @@ from (values
   ('В в', 'v as in van — вода (water)', 'вода', 'water', 3),
   ('Г г', 'g as in go, always hard — година (year)', 'година', 'year', 4),
   ('Д д', 'd as in dog — дете (child)', 'дете', 'child', 5),
-  ('Ђ ђ', 'soft j, like the ''d y'' in would you; the voiced partner of Ћ — ђубре (rubbish)', 'ђубре', 'rubbish', 6),
-  ('Е е', 'e as in bed, never a diphthong — вече (evening)', 'вече', 'evening', 7),
+  ('Ђ ђ', 'soft j, like the ''d y'' in would you; Ћ with a hum behind it — ђубре (rubbish)', 'ђубре', 'rubbish', 6),
+  ('Е е', 'e as in bed, one clean sound, never ay — вече (evening)', 'вече', 'evening', 7),
   ('Ж ж', 'zh, like the s in measure — жена (wife, woman)', 'жена', 'wife, woman', 8),
   ('З з', 'z as in zoo — зима (winter)', 'зима', 'winter', 9),
   ('И и', 'ee as in see, short — име (name)', 'име', 'name', 10),
@@ -90,7 +90,7 @@ from (values
   ('Х х', 'h scraped at the back of the throat, like the ch in Scottish loch but much lighter — хлеб (bread)', 'хлеб', 'bread', 26),
   ('Ц ц', 'ts as in cats, never a k sound — црвен (red)', 'црвен', 'red', 27),
   ('Ч ч', 'hard ch as in church, tongue drawn back, heavier than Ћ — чај (tea)', 'чај', 'tea', 28),
-  ('Џ џ', 'hard j as in judge, the voiced pair of Ч — џем (jam)', 'џем', 'jam', 29),
+  ('Џ џ', 'hard j as in judge, Ч with a hum behind it — џем (jam)', 'џем', 'jam', 29),
   ('Ш ш', 'sh as in shop — шећер (sugar)', 'шећер', 'sugar', 30)
 ) as v (sr_cyr, en, example_cyr, example_en, sort)
 on conflict (sr_cyr) do nothing;

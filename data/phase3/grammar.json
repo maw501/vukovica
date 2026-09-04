@@ -2,16 +2,16 @@
   {
     "slug": "to-be",
     "title_en": "To be — сам / јесам (present)",
-    "explain_md": "Serbian has two present-tense forms of *to be*.\n\nThe short **enclitic** form does the everyday work: сам, си, је, смо, сте, су. It can never begin a sentence — it sits in second position.\n\n- Ја сам уморан. — I am tired.\n- Уморан сам. — I'm tired.\n- Ми смо код куће. — We are at home.\n\nThe long **stressed** form is for emphasis, for questions and for one-word answers: јесам, јеси, јесте, јесмо, јесте, јесу.\n\n- Јеси ли гладан? — Are you hungry? — Јесам. — I am.\n- Је ли он код куће? — Is he at home?\n\nThe negative is a word of its own, not не + сам: нисам, ниси, није, нисмо, нисте, нису.\n\n- Нисам гладан. — I'm not hungry.\n- Није код куће. — He isn't at home.",
+    "explain_md": "Serbian has two present-tense forms of *to be*.\n\nThe short form does the everyday work: сам, си, је, смо, сте, су. It can never begin a sentence — it sits in second position.\n\n- Ја сам уморан. — I am tired.\n- Уморан сам. — I'm tired.\n- Ми смо код куће. — We are at home.\n\nThe long **stressed** form is for emphasis, for questions and for one-word answers: јесам, јеси, јесте, јесмо, јесте, јесу.\n\n- Јеси ли гладан? — Are you hungry? — Јесам. — I am.\n- Је ли он код куће? — Is he at home?\n\nThe negative is a word of its own, not не + сам: нисам, ниси, није, нисмо, нисте, нису.\n\n- Нисам гладан. — I'm not hungry.\n- Није код куће. — He isn't at home.",
     "sort": 1,
     "items": [
-      { "prompt": "I am at home — ја ___ код куће", "answer_cyr": "сам", "note": "1st person singular, enclitic", "sort": 1 },
+      { "prompt": "I am at home — ја ___ код куће", "answer_cyr": "сам", "note": "1st person singular, short form", "sort": 1 },
       { "prompt": "you are tired (to one person) — ти ___ уморан", "answer_cyr": "си", "note": "2nd person singular", "sort": 2 },
       { "prompt": "he is my son — он ___ мој син", "answer_cyr": "је", "note": "3rd person singular", "sort": 3 },
       { "prompt": "we are at home — ми ___ код куће", "answer_cyr": "смо", "note": "1st person plural", "sort": 4 },
       { "prompt": "you are here (plural or polite) — ви ___ овде", "answer_cyr": "сте", "note": "2nd person plural, also the polite you", "sort": 5 },
       { "prompt": "they are in the garden — они ___ у башти", "answer_cyr": "су", "note": "3rd person plural", "sort": 6 },
-      { "prompt": "I'm hungry (no pronoun) — Гладан ___.", "answer_cyr": "сам", "note": "the enclitic takes second place in the sentence", "sort": 7 },
+      { "prompt": "I'm hungry (no pronoun) — Гладан ___.", "answer_cyr": "сам", "note": "the short form takes second place in the sentence", "sort": 7 },
       { "prompt": "she is a mother — она ___ мајка", "answer_cyr": "је", "note": "3rd person singular", "sort": 8 },
       { "prompt": "it is cold outside — напољу ___ хладно", "answer_cyr": "је", "note": "impersonal statements use је", "sort": 9 },
       { "prompt": "we are a family — ми ___ породица", "answer_cyr": "смо", "note": "1st person plural", "sort": 10 },
@@ -28,7 +28,7 @@
   {
     "slug": "personal-pronouns",
     "title_en": "Personal pronouns",
-    "explain_md": "Subject pronouns: ја, ти, он / она / оно, ми, ви, они / оне / она.\n\nSerbian usually **drops** them, because the verb ending already shows the person. Волим те is complete on its own; ја is added only for emphasis or contrast.\n\n- Волим те. — I love you.\n- Ја идем, ти остајеш. — *I'm* going, *you're* staying.\n\nВи is also the polite singular you, used with your mother-in-law until told otherwise.\n\nObject pronouns have short clitic forms you will hear constantly.\n\nAccusative (direct object): ме, те, га, је, нас, вас, их.\n- Она ме воли. — She loves me.\n- Ми га видимо. — We see him.\n\nDative (to someone): ми, ти, му, јој, нам, вам, им.\n- Дај ми руку. — Give me your hand.\n- Помози јој. — Help her.",
+    "explain_md": "Subject pronouns: ја, ти, он / она / оно, ми, ви, они / оне / она.\n\nSerbian usually **drops** them, because the verb ending already shows the person. Волим те is complete on its own; ја is added only for emphasis or contrast.\n\n- Волим те. — I love you.\n- Ја идем, ти остајеш. — *I'm* going, *you're* staying.\n\nВи is also the polite singular you, used with your mother-in-law until told otherwise.\n\nObject pronouns have short forms you will hear constantly.\n\nAccusative, the form for the person or thing acted on: ме, те, га, је, нас, вас, их.\n- Она ме воли. — She loves me.\n- Ми га видимо. — We see him.\n\nDative, the form for *to* or *for* someone: ми, ти, му, јој, нам, вам, им.\n- Дај ми руку. — Give me your hand.\n- Помози јој. — Help her.",
     "sort": 2,
     "items": [
       { "prompt": "I — ___", "answer_cyr": "ја", "note": "subject pronoun", "sort": 1 },
@@ -40,21 +40,21 @@
       { "prompt": "you (plural or polite) — ___", "answer_cyr": "ви", "note": "also the polite singular you", "sort": 7 },
       { "prompt": "they (men, or a mixed group) — ___", "answer_cyr": "они", "note": "masculine plural", "sort": 8 },
       { "prompt": "they (women) — ___", "answer_cyr": "оне", "note": "feminine plural", "sort": 9 },
-      { "prompt": "I love you — волим ___", "answer_cyr": "те", "note": "accusative clitic of ти", "sort": 10 },
-      { "prompt": "she loves me — она ___ воли", "answer_cyr": "ме", "note": "accusative clitic of ја", "sort": 11 },
-      { "prompt": "we see him — ми ___ видимо", "answer_cyr": "га", "note": "accusative clitic of он", "sort": 12 },
-      { "prompt": "I see them — ја ___ видим", "answer_cyr": "их", "note": "accusative clitic of они", "sort": 13 },
+      { "prompt": "I love you — волим ___", "answer_cyr": "те", "note": "short accusative form of ти", "sort": 10 },
+      { "prompt": "she loves me — она ___ воли", "answer_cyr": "ме", "note": "short accusative form of ја", "sort": 11 },
+      { "prompt": "we see him — ми ___ видимо", "answer_cyr": "га", "note": "short accusative form of он", "sort": 12 },
+      { "prompt": "I see them — ја ___ видим", "answer_cyr": "их", "note": "short accusative form of они", "sort": 13 },
       { "prompt": "he calls us — он ___ зове", "answer_cyr": "нас", "note": "accusative of ми", "sort": 14 },
-      { "prompt": "give me your hand — дај ___ руку", "answer_cyr": "ми", "note": "dative clitic of ја — same shape as we", "sort": 15 },
-      { "prompt": "I'm telling you (one person) — кажем ___", "answer_cyr": "ти", "note": "dative clitic of ти", "sort": 16 },
-      { "prompt": "help her — помози ___", "answer_cyr": "јој", "note": "dative clitic of она", "sort": 17 },
-      { "prompt": "I'm bringing him a toy — доносим ___ играчку", "answer_cyr": "му", "note": "dative clitic of он", "sort": 18 }
+      { "prompt": "give me your hand — дај ___ руку", "answer_cyr": "ми", "note": "short dative form of ја — same shape as we", "sort": 15 },
+      { "prompt": "I'm telling you (one person) — кажем ___", "answer_cyr": "ти", "note": "short dative form of ти", "sort": 16 },
+      { "prompt": "help her — помози ___", "answer_cyr": "јој", "note": "short dative form of она", "sort": 17 },
+      { "prompt": "I'm bringing him a toy — доносим ___ играчку", "answer_cyr": "му", "note": "short dative form of он", "sort": 18 }
     ]
   },
   {
     "slug": "imati-present",
     "title_en": "имати — to have (present)",
-    "explain_md": "имати is regular: имам, имаш, има, имамо, имате, имају.\n\n- Имам сина. — I have a son.\n- Имамо кућу у Београду. — We have a house in Belgrade.\n\nThe negative fuses into one word: немам, немаш, нема, немамо, немате, немају.\n\n- Немам времена. — I don't have time.\n- Нема телефон. — He doesn't have a phone.\n\nAfter a negative, the object often turns genitive: немам времена (not време), немамо хлеба.\n\nTwo everyday uses to memorise:\n- Age: Колико имаш година? — How old are you? Син има годину дана. — Our son is one.\n- Existence: Има млека у фрижидеру. — There is milk in the fridge. Нема хлеба. — There's no bread.",
+    "explain_md": "имати is regular: имам, имаш, има, имамо, имате, имају.\n\n- Имам сина. — I have a son.\n- Имамо кућу у Београду. — We have a house in Belgrade.\n\nThe negative fuses into one word: немам, немаш, нема, немамо, немате, немају.\n\n- Немам времена. — I don't have time.\n- Нема телефон. — He doesn't have a phone.\n\nAfter a negative, the object often switches to the genitive, the *of* form: немам времена (not време), немамо хлеба.\n\nTwo everyday uses to memorise:\n- Age: Колико имаш година? — How old are you? Син има годину дана. — Our son is one.\n- Existence: Има млека у фрижидеру. — There is milk in the fridge. Нема хлеба. — There's no bread.",
     "sort": 3,
     "items": [
       { "prompt": "I have a son — ја ___ сина", "answer_cyr": "имам", "note": "1st person singular", "sort": 1 },
@@ -106,7 +106,7 @@
   {
     "slug": "voleti-present",
     "title_en": "волети — to love, to like (present)",
-    "explain_md": "волети follows the -им pattern: волим, волиш, воли, волимо, волите, воле.\n\nNote the 3rd person plural is **воле**, not волију.\n\n- Волим те. — I love you.\n- Волимо ову кућу. — We love this house.\n- Деца воле башту. — The children love the garden.\n\nWith a following verb, Serbian prefers да + present rather than an infinitive:\n\n- Волим да спавам. — I like to sleep.\n- Он воли да чита. — He likes reading.\n\nThe object pronoun clitic (ме, те, га, је, нас, вас, их) comes before the verb in a full sentence: Она ме воли. But after the verb when nothing else precedes: Волим те.\n\nNegation is regular: Не волим зиму. — I don't like winter.",
+    "explain_md": "волети follows the -им pattern: волим, волиш, воли, волимо, волите, воле.\n\nNote the 3rd person plural is **воле**, not волију.\n\n- Волим те. — I love you.\n- Волимо ову кућу. — We love this house.\n- Деца воле башту. — The children love the garden.\n\nWith a following verb, Serbian prefers да + present rather than an infinitive:\n\n- Волим да спавам. — I like to sleep.\n- Он воли да чита. — He likes reading.\n\nThe short object pronoun (ме, те, га, је, нас, вас, их) comes before the verb in a full sentence: Она ме воли. But after the verb when nothing else precedes: Волим те.\n\nNegation is regular: Не волим зиму. — I don't like winter.",
     "sort": 5,
     "items": [
       { "prompt": "I love you — ја те ___", "answer_cyr": "волим", "note": "1st person singular", "sort": 1 },
@@ -132,7 +132,7 @@
   {
     "slug": "hteti-present",
     "title_en": "хтети — to want, and the future (present)",
-    "explain_md": "хтети has a full form and a clitic form, and both matter.\n\nFull form — *to want*: хоћу, хоћеш, хоће, хоћемо, хоћете, хоће.\n- Хоћу воду. — I want water.\n- Хоћеш ли још мало? — Do you want some more?\n\nClitic form — the **future tense**: ћу, ћеш, ће, ћемо, ћете, ће, plus the infinitive.\n- Ја ћу доћи сутра. — I will come tomorrow.\n- Он ће нам помоћи. — He will help us.\n\nLike сам, the clitic cannot start a sentence: Доћи ћу сутра, never Ћу доћи.\n\nNegative fuses: нећу, нећеш, неће, нећемо, нећете, неће — and it serves both meanings.\n- Нећу. — I don't want to.\n- Нећемо закаснити. — We won't be late.",
+    "explain_md": "хтети has a full form and a short form, and both matter.\n\nFull form — *to want*: хоћу, хоћеш, хоће, хоћемо, хоћете, хоће.\n- Хоћу воду. — I want water.\n- Хоћеш ли још мало? — Do you want some more?\n\nShort form — the **future tense**: ћу, ћеш, ће, ћемо, ћете, ће, plus the infinitive.\n- Ја ћу доћи сутра. — I will come tomorrow.\n- Он ће нам помоћи. — He will help us.\n\nLike сам, the short form cannot start a sentence: Доћи ћу сутра, never Ћу доћи.\n\nNegative fuses: нећу, нећеш, неће, нећемо, нећете, неће — and it serves both meanings.\n- Нећу. — I don't want to.\n- Нећемо закаснити. — We won't be late.",
     "sort": 6,
     "items": [
       { "prompt": "I want water — ја ___ воду", "answer_cyr": "хоћу", "note": "full form, 1st person singular", "sort": 1 },
@@ -142,12 +142,12 @@
       { "prompt": "you (plural) want coffee — ви ___ кафу", "answer_cyr": "хоћете", "note": "full form, 2nd person plural", "sort": 5 },
       { "prompt": "they want to eat — они ___ да једу", "answer_cyr": "хоће", "note": "full form, 3rd person plural", "sort": 6 },
       { "prompt": "what do you want for dinner? — шта ___ за вечеру?", "answer_cyr": "хоћеш", "note": "full form, 2nd person singular", "sort": 7 },
-      { "prompt": "I will come tomorrow — ја ___ доћи сутра", "answer_cyr": "ћу", "note": "future clitic plus infinitive", "sort": 8 },
-      { "prompt": "you will see — ти ___ видети", "answer_cyr": "ћеш", "note": "future clitic, 2nd person singular", "sort": 9 },
-      { "prompt": "he will help us — он ___ нам помоћи", "answer_cyr": "ће", "note": "future clitic, 3rd person singular", "sort": 10 },
-      { "prompt": "we will be at home — ми ___ бити код куће", "answer_cyr": "ћемо", "note": "future clitic, 1st person plural", "sort": 11 },
-      { "prompt": "you (plural) will see the moon — ви ___ видети Месец", "answer_cyr": "ћете", "note": "future clitic, 2nd person plural", "sort": 12 },
-      { "prompt": "they will come on Sunday — они ___ доћи у недељу", "answer_cyr": "ће", "note": "future clitic, 3rd person plural", "sort": 13 },
+      { "prompt": "I will come tomorrow — ја ___ доћи сутра", "answer_cyr": "ћу", "note": "future short form plus infinitive", "sort": 8 },
+      { "prompt": "you will see — ти ___ видети", "answer_cyr": "ћеш", "note": "future short form, 2nd person singular", "sort": 9 },
+      { "prompt": "he will help us — он ___ нам помоћи", "answer_cyr": "ће", "note": "future short form, 3rd person singular", "sort": 10 },
+      { "prompt": "we will be at home — ми ___ бити код куће", "answer_cyr": "ћемо", "note": "future short form, 1st person plural", "sort": 11 },
+      { "prompt": "you (plural) will see the moon — ви ___ видети Месец", "answer_cyr": "ћете", "note": "future short form, 2nd person plural", "sort": 12 },
+      { "prompt": "they will come on Sunday — они ___ доћи у недељу", "answer_cyr": "ће", "note": "future short form, 3rd person plural", "sort": 13 },
       { "prompt": "I don't want to — ја ___", "answer_cyr": "нећу", "note": "не fuses with хтети", "sort": 14 },
       { "prompt": "she doesn't want milk — она ___ млеко", "answer_cyr": "неће", "note": "negative, 3rd person singular", "sort": 15 },
       { "prompt": "the baby won't sleep — беба ___ да спава", "answer_cyr": "неће", "note": "negative, 3rd person singular", "sort": 16 },
@@ -181,7 +181,7 @@
   {
     "slug": "ici-present",
     "title_en": "ићи — to go (present)",
-    "explain_md": "The infinitive ићи looks nothing like its present tense: идем, идеш, иде, идемо, идете, иду.\n\n- Идем кући. — I'm going home.\n- Куда идеш? — Where are you going?\n- Деца иду у вртић. — The children go to nursery.\n\nDirection uses у or на plus the accusative: у продавницу, у шетњу, на посао, на пијацу. *Home* is the special adverb кући.\n\nTwo close relatives to learn with it:\n- доћи — to come (arrive): дођем, дођеш, дође... Imperative: Дођи овамо. — Come here.\n- долазити — to be coming: Долазим за пет минута. — I'm coming in five minutes.\n\nLet's go is Хајде да идемо, or simply Идемо.",
+    "explain_md": "The infinitive ићи looks nothing like its present tense: идем, идеш, иде, идемо, идете, иду.\n\n- Идем кући. — I'm going home.\n- Куда идеш? — Where are you going?\n- Деца иду у вртић. — The children go to nursery.\n\nDirection uses у or на plus the accusative form of the place: у продавницу, у шетњу, на посао, на пијацу. *Home* is the special adverb кући.\n\nTwo close relatives to learn with it:\n- доћи — to come (arrive): дођем, дођеш, дође... Imperative: Дођи овамо. — Come here.\n- долазити — to be coming: Долазим за пет минута. — I'm coming in five minutes.\n\nLet's go is Хајде да идемо, or simply Идемо.",
     "sort": 8,
     "items": [
       { "prompt": "I'm going home — ја ___ кући", "answer_cyr": "идем", "note": "1st person singular", "sort": 1 },

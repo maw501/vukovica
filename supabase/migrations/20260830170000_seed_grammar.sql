@@ -38,7 +38,7 @@ select v.slug, v.title_en, v.explain_md, v.sort
 from (values
   ('to-be', 'To be — сам / јесам (present)', 'Serbian has two present-tense forms of *to be*.
 
-The short **enclitic** form does the everyday work: сам, си, је, смо, сте, су. It can never begin a sentence — it sits in second position.
+The short form does the everyday work: сам, си, је, смо, сте, су. It can never begin a sentence — it sits in second position.
 
 - Ја сам уморан. — I am tired.
 - Уморан сам. — I''m tired.
@@ -62,13 +62,13 @@ Serbian usually **drops** them, because the verb ending already shows the person
 
 Ви is also the polite singular you, used with your mother-in-law until told otherwise.
 
-Object pronouns have short clitic forms you will hear constantly.
+Object pronouns have short forms you will hear constantly.
 
-Accusative (direct object): ме, те, га, је, нас, вас, их.
+Accusative, the form for the person or thing acted on: ме, те, га, је, нас, вас, их.
 - Она ме воли. — She loves me.
 - Ми га видимо. — We see him.
 
-Dative (to someone): ми, ти, му, јој, нам, вам, им.
+Dative, the form for *to* or *for* someone: ми, ти, му, јој, нам, вам, им.
 - Дај ми руку. — Give me your hand.
 - Помози јој. — Help her.', 2),
   ('imati-present', 'имати — to have (present)', 'имати is regular: имам, имаш, има, имамо, имате, имају.
@@ -81,7 +81,7 @@ The negative fuses into one word: немам, немаш, нема, немамо
 - Немам времена. — I don''t have time.
 - Нема телефон. — He doesn''t have a phone.
 
-After a negative, the object often turns genitive: немам времена (not време), немамо хлеба.
+After a negative, the object often switches to the genitive, the *of* form: немам времена (not време), немамо хлеба.
 
 Two everyday uses to memorise:
 - Age: Колико имаш година? — How old are you? Син има годину дана. — Our son is one.
@@ -117,20 +117,20 @@ With a following verb, Serbian prefers да + present rather than an infinitive:
 - Волим да спавам. — I like to sleep.
 - Он воли да чита. — He likes reading.
 
-The object pronoun clitic (ме, те, га, је, нас, вас, их) comes before the verb in a full sentence: Она ме воли. But after the verb when nothing else precedes: Волим те.
+The short object pronoun (ме, те, га, је, нас, вас, их) comes before the verb in a full sentence: Она ме воли. But after the verb when nothing else precedes: Волим те.
 
 Negation is regular: Не волим зиму. — I don''t like winter.', 5),
-  ('hteti-present', 'хтети — to want, and the future (present)', 'хтети has a full form and a clitic form, and both matter.
+  ('hteti-present', 'хтети — to want, and the future (present)', 'хтети has a full form and a short form, and both matter.
 
 Full form — *to want*: хоћу, хоћеш, хоће, хоћемо, хоћете, хоће.
 - Хоћу воду. — I want water.
 - Хоћеш ли још мало? — Do you want some more?
 
-Clitic form — the **future tense**: ћу, ћеш, ће, ћемо, ћете, ће, plus the infinitive.
+Short form — the **future tense**: ћу, ћеш, ће, ћемо, ћете, ће, plus the infinitive.
 - Ја ћу доћи сутра. — I will come tomorrow.
 - Он ће нам помоћи. — He will help us.
 
-Like сам, the clitic cannot start a sentence: Доћи ћу сутра, never Ћу доћи.
+Like сам, the short form cannot start a sentence: Доћи ћу сутра, never Ћу доћи.
 
 Negative fuses: нећу, нећеш, неће, нећемо, нећете, неће — and it serves both meanings.
 - Нећу. — I don''t want to.
@@ -155,7 +155,7 @@ Negation is regular and stays a separate word: не могу, не можеш, �
 - Куда идеш? — Where are you going?
 - Деца иду у вртић. — The children go to nursery.
 
-Direction uses у or на plus the accusative: у продавницу, у шетњу, на посао, на пијацу. *Home* is the special adverb кући.
+Direction uses у or на plus the accusative form of the place: у продавницу, у шетњу, на посао, на пијацу. *Home* is the special adverb кући.
 
 Two close relatives to learn with it:
 - доћи — to come (arrive): дођем, дођеш, дође... Imperative: Дођи овамо. — Come here.
@@ -233,13 +233,13 @@ insert into public.grammar_items (topic_id, prompt, answer_cyr, note, sort)
 select t.id, v.prompt, v.answer_cyr, v.note, v.sort
 from (values
   -- to-be
-  ('to-be', 'I am at home — ја ___ код куће', 'сам', '1st person singular, enclitic', 1),
+  ('to-be', 'I am at home — ја ___ код куће', 'сам', '1st person singular, short form', 1),
   ('to-be', 'you are tired (to one person) — ти ___ уморан', 'си', '2nd person singular', 2),
   ('to-be', 'he is my son — он ___ мој син', 'је', '3rd person singular', 3),
   ('to-be', 'we are at home — ми ___ код куће', 'смо', '1st person plural', 4),
   ('to-be', 'you are here (plural or polite) — ви ___ овде', 'сте', '2nd person plural, also the polite you', 5),
   ('to-be', 'they are in the garden — они ___ у башти', 'су', '3rd person plural', 6),
-  ('to-be', 'I''m hungry (no pronoun) — Гладан ___.', 'сам', 'the enclitic takes second place in the sentence', 7),
+  ('to-be', 'I''m hungry (no pronoun) — Гладан ___.', 'сам', 'the short form takes second place in the sentence', 7),
   ('to-be', 'she is a mother — она ___ мајка', 'је', '3rd person singular', 8),
   ('to-be', 'it is cold outside — напољу ___ хладно', 'је', 'impersonal statements use је', 9),
   ('to-be', 'we are a family — ми ___ породица', 'смо', '1st person plural', 10),
@@ -261,15 +261,15 @@ from (values
   ('personal-pronouns', 'you (plural or polite) — ___', 'ви', 'also the polite singular you', 7),
   ('personal-pronouns', 'they (men, or a mixed group) — ___', 'они', 'masculine plural', 8),
   ('personal-pronouns', 'they (women) — ___', 'оне', 'feminine plural', 9),
-  ('personal-pronouns', 'I love you — волим ___', 'те', 'accusative clitic of ти', 10),
-  ('personal-pronouns', 'she loves me — она ___ воли', 'ме', 'accusative clitic of ја', 11),
-  ('personal-pronouns', 'we see him — ми ___ видимо', 'га', 'accusative clitic of он', 12),
-  ('personal-pronouns', 'I see them — ја ___ видим', 'их', 'accusative clitic of они', 13),
+  ('personal-pronouns', 'I love you — волим ___', 'те', 'short accusative form of ти', 10),
+  ('personal-pronouns', 'she loves me — она ___ воли', 'ме', 'short accusative form of ја', 11),
+  ('personal-pronouns', 'we see him — ми ___ видимо', 'га', 'short accusative form of он', 12),
+  ('personal-pronouns', 'I see them — ја ___ видим', 'их', 'short accusative form of они', 13),
   ('personal-pronouns', 'he calls us — он ___ зове', 'нас', 'accusative of ми', 14),
-  ('personal-pronouns', 'give me your hand — дај ___ руку', 'ми', 'dative clitic of ја — same shape as we', 15),
-  ('personal-pronouns', 'I''m telling you (one person) — кажем ___', 'ти', 'dative clitic of ти', 16),
-  ('personal-pronouns', 'help her — помози ___', 'јој', 'dative clitic of она', 17),
-  ('personal-pronouns', 'I''m bringing him a toy — доносим ___ играчку', 'му', 'dative clitic of он', 18),
+  ('personal-pronouns', 'give me your hand — дај ___ руку', 'ми', 'short dative form of ја — same shape as we', 15),
+  ('personal-pronouns', 'I''m telling you (one person) — кажем ___', 'ти', 'short dative form of ти', 16),
+  ('personal-pronouns', 'help her — помози ___', 'јој', 'short dative form of она', 17),
+  ('personal-pronouns', 'I''m bringing him a toy — доносим ___ играчку', 'му', 'short dative form of он', 18),
   -- imati-present
   ('imati-present', 'I have a son — ја ___ сина', 'имам', '1st person singular', 1),
   ('imati-present', 'you have time — ти ___ времена', 'имаш', '2nd person singular', 2),
@@ -335,12 +335,12 @@ from (values
   ('hteti-present', 'you (plural) want coffee — ви ___ кафу', 'хоћете', 'full form, 2nd person plural', 5),
   ('hteti-present', 'they want to eat — они ___ да једу', 'хоће', 'full form, 3rd person plural', 6),
   ('hteti-present', 'what do you want for dinner? — шта ___ за вечеру?', 'хоћеш', 'full form, 2nd person singular', 7),
-  ('hteti-present', 'I will come tomorrow — ја ___ доћи сутра', 'ћу', 'future clitic plus infinitive', 8),
-  ('hteti-present', 'you will see — ти ___ видети', 'ћеш', 'future clitic, 2nd person singular', 9),
-  ('hteti-present', 'he will help us — он ___ нам помоћи', 'ће', 'future clitic, 3rd person singular', 10),
-  ('hteti-present', 'we will be at home — ми ___ бити код куће', 'ћемо', 'future clitic, 1st person plural', 11),
-  ('hteti-present', 'you (plural) will see the moon — ви ___ видети Месец', 'ћете', 'future clitic, 2nd person plural', 12),
-  ('hteti-present', 'they will come on Sunday — они ___ доћи у недељу', 'ће', 'future clitic, 3rd person plural', 13),
+  ('hteti-present', 'I will come tomorrow — ја ___ доћи сутра', 'ћу', 'future short form plus infinitive', 8),
+  ('hteti-present', 'you will see — ти ___ видети', 'ћеш', 'future short form, 2nd person singular', 9),
+  ('hteti-present', 'he will help us — он ___ нам помоћи', 'ће', 'future short form, 3rd person singular', 10),
+  ('hteti-present', 'we will be at home — ми ___ бити код куће', 'ћемо', 'future short form, 1st person plural', 11),
+  ('hteti-present', 'you (plural) will see the moon — ви ___ видети Месец', 'ћете', 'future short form, 2nd person plural', 12),
+  ('hteti-present', 'they will come on Sunday — они ___ доћи у недељу', 'ће', 'future short form, 3rd person plural', 13),
   ('hteti-present', 'I don''t want to — ја ___', 'нећу', 'не fuses with хтети', 14),
   ('hteti-present', 'she doesn''t want milk — она ___ млеко', 'неће', 'negative, 3rd person singular', 15),
   ('hteti-present', 'the baby won''t sleep — беба ___ да спава', 'неће', 'negative, 3rd person singular', 16),
