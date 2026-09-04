@@ -392,6 +392,14 @@ export interface QueueEntry {
  */
 const MAX_ROWS = 1000;
 
+/**
+ * How My words pages its read. `MAX_ROWS` is PostgREST's own cap, so a page can
+ * never be larger than that; `LIBRARY_MAX_PAGES` is the runaway guard, and ten
+ * pages is ten times a deck that has 724 cards in it.
+ */
+const LIBRARY_PAGE_SIZE = MAX_ROWS;
+const LIBRARY_MAX_PAGES = 10;
+
 /** A due `user_cards` row with its card embedded. */
 interface DueJoinRow extends UserCardRow {
   /**
@@ -662,33 +670,48 @@ async function deleteCard(id: string): Promise<void> {
  * below). `lib/library.ts` splits them into Known and Still learning.
  *
  * One select with the card embedded, like `getQueue`, rather than a read per
- * card. The same `MAX_ROWS` caveat applies and is looser here: the cap is
- * PostgREST's 1000, and this can only return as many rows as there are cards
- * studied — 724 in the whole deck today. If the deck ever outgrows 1000, this
- * needs paginating, and the header would silently under-count until it does.
+ * card — but **paged**, unlike `getQueue`. The dashboard's known count is a
+ * `count: 'exact'` with no cap (`getProgress`), so a single capped read here
+ * would let the two disagree the moment the studied rows passed PostgREST's
+ * `max_rows`: the tile would say 1 042 known and this screen 1 000, which is
+ * precisely the divergence `lib/library.ts` promises cannot happen. Paging costs
+ * one round trip today (724 cards in the whole deck) and keeps the promise
+ * whatever the deck grows to.
+ *
+ * The order is `last_review` descending, which is both the screen's default sort
+ * and — with `card_id` breaking its ties — the total order a paged read needs to
+ * be sure it never skips or repeats a row.
  */
 async function getLibrary(): Promise<LibraryEntry[]> {
   const userId = await requireUserId();
-  const { data, error } = await supabase
-    .from('user_cards')
-    // `!inner` rather than a plain embed so the deck filter applies to the
-    // joined card. The FK is `not null`, so the join drops nothing.
-    .select('*, cards!inner(*)')
-    .eq('user_id', userId)
-    // Words only. Letters have not lived in this table since
-    // 20260904120000_letter_stats.sql, and a stray one would be shown here as a
-    // word he knows — which is the trainer's question, not this screen's.
-    .eq('cards.kind', WORD_KIND)
-    .limit(MAX_ROWS)
-    .returns<DueJoinRow[]>();
-  if (error) throw error;
 
   const entries: LibraryEntry[] = [];
-  for (const row of data ?? []) {
-    const card = embeddedCard(row);
-    if (!card || card.kind !== WORD_KIND) continue; // Unreachable: the FK and the filter.
-    const { cards: _embedded, ...userCard } = row;
-    entries.push({ card, userCard });
+  for (let page = 0; page < LIBRARY_MAX_PAGES; page += 1) {
+    const from = page * LIBRARY_PAGE_SIZE;
+    const { data, error } = await supabase
+      .from('user_cards')
+      // `!inner` rather than a plain embed so the deck filter applies to the
+      // joined card. The FK is `not null`, so the join drops nothing.
+      .select('*, cards!inner(*)')
+      .eq('user_id', userId)
+      // Words only. Letters have not lived in this table since
+      // 20260904120000_letter_stats.sql, and a stray one would be shown here as
+      // a word he knows — which is the trainer's question, not this screen's.
+      .eq('cards.kind', WORD_KIND)
+      .order('last_review', { ascending: false, nullsFirst: false })
+      .order('card_id', { ascending: true })
+      .range(from, from + LIBRARY_PAGE_SIZE - 1)
+      .returns<DueJoinRow[]>();
+    if (error) throw error;
+
+    const rows = data ?? [];
+    for (const row of rows) {
+      const card = embeddedCard(row);
+      if (!card || card.kind !== WORD_KIND) continue; // Unreachable: the FK and the filter.
+      const { cards: _embedded, ...userCard } = row;
+      entries.push({ card, userCard });
+    }
+    if (rows.length < LIBRARY_PAGE_SIZE) break;
   }
   return entries;
 }

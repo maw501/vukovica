@@ -61,15 +61,6 @@ export function splitLibrary(entries: readonly LibraryEntry[]): {
   return { known, learning };
 }
 
-/** How many are on each side. The header's two numbers. */
-export function countLibrary(entries: readonly LibraryEntry[]): {
-  known: number;
-  learning: number;
-} {
-  const { known, learning } = splitLibrary(entries);
-  return { known: known.length, learning: learning.length };
-}
-
 /**
  * The line under the title: "142 words known · 38 still learning".
  *

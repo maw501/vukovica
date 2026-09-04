@@ -34,7 +34,6 @@ import { SpeakButton } from '@/components/SpeakButton';
 import { api, type LibraryEntry } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import {
-  countLibrary,
   learnedLabel,
   libraryHeadline,
   sortLibrary,
@@ -82,18 +81,20 @@ export default function LibraryScreen() {
   const [openId, setOpenId] = useState<string | null>(null);
 
   const entries = useMemo(() => library.data ?? [], [library.data]);
-  const counts = useMemo(() => countLibrary(entries), [entries]);
+  // Partitioned once: the two counts are the two lengths, so there is no reason
+  // to walk the list a second time to find out what it has just been split by.
+  const sections = useMemo(() => splitLibrary(entries), [entries]);
+  const counts = { known: sections.known.length, learning: sections.learning.length };
 
   const rows = useMemo(() => {
-    const { known, learning } = splitLibrary(entries);
-    const chosen = section === 'known' ? known : learning;
+    const chosen = section === 'known' ? sections.known : sections.learning;
     const searchable: SearchableEntry[] = sortLibrary(chosen, sort).map((entry) => ({
       ...entry,
       sr_cyr: entry.card.sr_cyr,
       en: entry.card.en,
     }));
     return filterCards(searchable, query);
-  }, [entries, query, section, sort]);
+  }, [query, section, sections, sort]);
 
   if (library.isPending) {
     return (
@@ -206,7 +207,7 @@ export default function LibraryScreen() {
             {query
               ? `No words match “${query}”.`
               : section === 'known'
-                ? 'Nothing here yet — a word lands under Known once it graduates out of learning.'
+                ? 'Nothing here yet — words move here once you have got them right a few times.'
                 : 'Nothing part-learnt right now. Everything you have studied is under Known.'}
           </Text>
         }

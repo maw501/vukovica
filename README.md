@@ -195,14 +195,20 @@ tutor and are no longer read or written by anything. They are harmless, and
 dropping them is a migration nobody has needed yet.
 
 Every table carries explicit `GRANT`s; Supabase no longer adds them for you.
-Three RPCs keep multi-row writes atomic: `submit_review` (card state and its log
-in one transaction), `bump_drill_stats` and `bump_grammar_stats` (per-letter and
-per-topic counters). XP is not one of them — `xp_events` is an append-only
-ledger written by a plain client insert under its own policy, and a lost point
-is not worth a transaction. Two storage buckets: `audio`, public-read, holding
-the pronunciation
-clips; and `book-photos`, private and owner-scoped, holding the photographed
-pages.
+Five RPCs keep a write that spans two rows — or that has to read the row it
+writes — in one transaction: `submit_review` (card state and its log),
+`bump_drill_stats` and `bump_grammar_stats` (per-letter and per-topic counters),
+`rate_letter` (a letter's tally and the XP it earns) and `mark_known` ("I already
+know this", which parks a word as known and pays no XP at all). Every one is
+`security invoker` with `execute` granted to `authenticated` alone and `user_id`
+taken from `auth.uid()`, so a caller can only ever write its own rows.
+
+XP is otherwise not transactional: `xp_events` is an append-only ledger written
+by a plain client insert under its own policy, and a lost point is not worth a
+transaction.
+
+Two storage buckets: `audio`, public-read, holding the pronunciation clips; and
+`book-photos`, private and owner-scoped, holding the photographed pages.
 
 **Auth.** Supabase email + password, one user. Account creation only appears
 when `EXPO_PUBLIC_ALLOW_SIGNUP=true`, which comes off after registering.

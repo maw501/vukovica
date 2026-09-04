@@ -23,17 +23,39 @@ import type { UserCardRow } from '@/lib/types';
 export function MarkKnownButton({
   cardId,
   onMarked,
+  run,
+  refetchQueue = true,
   testID = 'mark-known',
 }: {
   cardId: string;
   /** Called once the row is saved, with the row the function returned. */
   onMarked?: (row: UserCardRow) => void;
+  /**
+   * Somewhere to run the write, for a caller that already serialises its writes
+   * to `user_cards`. The review session passes its `submitChain`: a card
+   * answered Again comes round again in the same session, so a `submit_review`
+   * could still be in flight against this very row, and two unordered writes
+   * would let a late FSRS schedule overwrite the parking this button just did.
+   * Defaults to running the call directly.
+   */
+  run?: (task: () => Promise<UserCardRow>) => Promise<UserCardRow>;
+  /**
+   * Whether the due queue should be refetched now. True for the deck, which
+   * wants the next session to know; **false inside a live session**, where the
+   * `['queue']` query is active and a refetch mid-session is the very hazard
+   * `review.tsx`'s `restart` goes to such lengths to avoid. The entry is marked
+   * stale either way, so the next session still builds from fresh data.
+   */
+  refetchQueue?: boolean;
   testID?: string;
 }) {
   const queryClient = useQueryClient();
 
   const mark = useMutation({
-    mutationFn: () => api.markKnown(cardId),
+    mutationFn: () => {
+      const task = () => api.markKnown(cardId);
+      return run ? run(task) : task();
+    },
     onSuccess: (row) => {
       // The word has just moved into (or within) the Known list, out of the due
       // queue for three months, and up the Words ladder — all four of these read
@@ -41,7 +63,10 @@ export function MarkKnownButton({
       void queryClient.invalidateQueries({ queryKey: ['library'] });
       void queryClient.invalidateQueries({ queryKey: ['progress'] });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      void queryClient.invalidateQueries({ queryKey: ['queue'] });
+      void queryClient.invalidateQueries({
+        queryKey: ['queue'],
+        ...(refetchQueue ? {} : { refetchType: 'none' as const }),
+      });
       onMarked?.(row);
     },
   });

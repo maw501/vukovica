@@ -6,7 +6,6 @@ import { describe, expect, it } from 'vitest';
 
 import {
   classifyKnown,
-  countLibrary,
   isKnown,
   KNOWN_DUE_DAYS,
   KNOWN_STABILITY,
@@ -108,14 +107,6 @@ describe('splitLibrary', () => {
 
   it('copes with nothing studied yet', () => {
     expect(splitLibrary([])).toEqual({ known: [], learning: [] });
-  });
-});
-
-describe('countLibrary', () => {
-  it('counts each side', () => {
-    expect(
-      countLibrary([entry('a', 'review'), entry('b', 'review'), entry('c', 'learning')]),
-    ).toEqual({ known: 2, learning: 1 });
   });
 });
 
@@ -253,12 +244,28 @@ const migration = readFileSync(
   'utf8',
 );
 
+/**
+ * The function's declaration: everything from `create function` to the `as $$`
+ * that opens its body.
+ *
+ * Sliced rather than matched over the whole file on purpose. `security definer`
+ * and `security invoker` are words that belong in a comment as much as in a
+ * declaration — the migration's own header explains why it is not a definer —
+ * and a substring test over the file would both fail on that comment and pass on
+ * a commented-out declaration.
+ */
+function functionHeader(): string {
+  const start = migration.indexOf(`create function public.${MARK_KNOWN_FN}(`);
+  const end = migration.indexOf('as $$', start);
+  expect(start).toBeGreaterThan(-1);
+  expect(end).toBeGreaterThan(start);
+  return migration.slice(start, end);
+}
+
 /** The `p_*` argument names the migration declares, in declaration order. */
 function migrationParameterNames(): string[] {
-  const signature = migration.slice(
-    migration.indexOf(`create function public.${MARK_KNOWN_FN}(`),
-    migration.indexOf('returns public.user_cards'),
-  );
+  const header = functionHeader();
+  const signature = header.slice(0, header.indexOf('returns public.user_cards'));
   return [...signature.matchAll(/^\s*(p_[a-z_]+)\s+/gm)].map((match) => match[1]);
 }
 
@@ -274,8 +281,14 @@ describe('the mark_known migration keeps its contract', () => {
   it('keeps the function under the caller’s RLS, not the definer’s', () => {
     // The house rule for every RPC in this schema (`submit_review`,
     // `bump_drill_stats`, `rate_letter`): the caller's own policies apply.
-    expect(migration).toContain('security invoker');
-    expect(migration).not.toContain('security definer');
+    // Asserted against the declaration itself, so prose about definers in the
+    // migration's comments neither fails this nor rescues a real mistake.
+    expect(functionHeader()).toContain('security invoker');
+    expect(functionHeader()).not.toContain('security definer');
+  });
+
+  it('pins its search_path, so an invoker-rights function cannot be shadowed', () => {
+    expect(functionHeader()).toContain('set search_path = public, pg_temp');
   });
 
   it('fills user_id from auth.uid() rather than trusting an argument', () => {

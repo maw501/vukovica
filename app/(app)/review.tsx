@@ -233,6 +233,11 @@ export default function ReviewScreen() {
       // A card graduating to 'review' is a word learnt, which moves the Words
       // goal and can move the stage itself.
       void queryClient.invalidateQueries({ queryKey: ['progress'] });
+      // ...and moves it between the two lists on My words, which has to hear
+      // about it at the same moment the tile does: the whole promise of
+      // `lib/library.ts` is that the two counts cannot disagree, and a 30-second
+      // `staleTime` on one of them would make a liar of it.
+      void queryClient.invalidateQueries({ queryKey: ['library'] });
       // ...and every answer moves the XP ring, whether or not it graduated.
       void queryClient.invalidateQueries({ queryKey: ['xp'] });
     },
@@ -297,10 +302,35 @@ export default function ReviewScreen() {
    * undo exactly the parking that was asked for. The dashboard, the Words ladder
    * and My words are refreshed by the button itself.
    */
-  const markKnown = useCallback(() => {
+  const markKnown = useCallback((cardId: string, row: UserCardRow) => {
+    // The parked row is the newest truth about this card. Nothing in this
+    // session should reach it again — `answerCurrent` appends at most one copy
+    // per occurrence consumed, so the card being skipped has no pending twin —
+    // but if anything ever did, it must not start from the pre-mark row.
+    latestRows.current.set(cardId, row);
     setMarkedKnown((current) => current + 1);
     setSession((current) => (current ? skipCurrent(current) : current));
     setRevealed(false);
+  }, []);
+
+  /**
+   * Run a write on the same chain the grades use.
+   *
+   * `mark_known` and `submit_review` write the same `user_cards` row, and a card
+   * answered Again comes round again in this very session — so a mark pressed
+   * while that grade is still in flight would race it, and a late
+   * `submit_review` would overwrite the parking with the schedule FSRS computed
+   * before it. One chain, one order.
+   */
+  const runQueued = useCallback((task: () => Promise<UserCardRow>) => {
+    const run = submitChain.current.then(task);
+    // The chain must survive a failed link, exactly as it does for a grade: one
+    // failed mark must not stall every later save in the session.
+    submitChain.current = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }, []);
 
   const retryFailures = useCallback(() => {
@@ -472,7 +502,12 @@ export default function ReviewScreen() {
             <MarkKnownButton
               key={entry.cardId}
               cardId={entry.cardId}
-              onMarked={markKnown}
+              run={runQueued}
+              // The `['queue']` query is active while this screen is up; marking
+              // it stale is what the next session needs, and refetching now is
+              // what `restart` exists to keep out of a running session.
+              refetchQueue={false}
+              onMarked={(row) => markKnown(entry.cardId, row)}
               testID="review-mark-known"
             />
           </>
@@ -623,11 +658,20 @@ function Summary({
     <ScrollView contentContainerStyle={styles.scroll}>
       <View style={styles.content} testID="summary">
         <Text style={styles.summaryTitle}>{didSomething ? 'Well done!' : 'Nothing to study'}</Text>
-        <Text style={styles.summarySubtitle} testID="summary-total">
-          {didSomething
-            ? `${total} answer${total === 1 ? '' : 's'} in this session`
-            : emptyMessage}
-        </Text>
+        {/* Each line only when it has something to say: a session spent
+            entirely marking words known has no answers to count, and
+            "0 answers in this session" under "Well done!" is a worse thing to
+            print than nothing at all. */}
+        {total > 0 ? (
+          <Text style={styles.summarySubtitle} testID="summary-total">
+            {`${total} answer${total === 1 ? '' : 's'} in this session`}
+          </Text>
+        ) : null}
+        {!didSomething ? (
+          <Text style={styles.summarySubtitle} testID="summary-empty">
+            {emptyMessage}
+          </Text>
+        ) : null}
         {markedKnown > 0 ? (
           <Text style={styles.summarySubtitle} testID="summary-known">
             {markedKnown} word{markedKnown === 1 ? '' : 's'} marked as known

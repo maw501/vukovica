@@ -76,6 +76,10 @@ export default function DeckScreen() {
     void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     // A deleted card can take a known word with it, which moves the Words goal.
     void queryClient.invalidateQueries({ queryKey: ['progress'] });
+    // ...and takes its row out of My words, which is the same claim said twice
+    // and must not be left saying it for the 30 seconds of the default
+    // `staleTime` after the tile has stopped.
+    void queryClient.invalidateQueries({ queryKey: ['library'] });
     void queryClient.invalidateQueries({ queryKey: ['queue'] });
     // The reader's gloss sheet caches its per-word deck lookup with
     // `staleTime: Infinity`, so a word added (or deleted) here would otherwise
