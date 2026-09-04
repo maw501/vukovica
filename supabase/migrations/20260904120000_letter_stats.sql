@@ -119,6 +119,20 @@ begin
       using errcode = '22023';
   end if;
 
+  -- `p_letter` is the card's own `sr_cyr`, so it can be checked against the
+  -- deck rather than taken on trust. Without this a typo or a stale client
+  -- quietly creates a tally row for a letter that does not exist, which nothing
+  -- ever reads and nothing ever cleans up. `cards` is readable by every signed-
+  -- in user (the deck is shared), so this costs one index probe and no
+  -- privilege.
+  if not exists (
+    select 1 from public.cards
+    where cards.kind = 'letter' and cards.sr_cyr = p_letter
+  ) then
+    raise exception 'rate_letter: % is not a letter card', p_letter
+      using errcode = '22023';
+  end if;
+
   insert into public.letter_stats as ls (user_id, letter, easy, hard, streak, last_seen)
   values (
     v_user_id,

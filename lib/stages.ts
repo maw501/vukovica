@@ -11,7 +11,8 @@
  */
 
 import { CYRILLIC_ALPHABET } from '@/lib/drills';
-import type { DrillStatRow } from '@/lib/types';
+import { solidGlyphs } from '@/lib/letters';
+import type { DrillStatRow, LetterStatRow } from '@/lib/types';
 
 /** Alphabet → Words → Reading → Books, in order. */
 export type Stage = 'alphabet' | 'words' | 'reading' | 'books';
@@ -50,10 +51,10 @@ const BOOKS_STORIES = 5;
 const BOOKS_GOAL = 'Read Погоди колико те волим to your son';
 
 export interface LetterMastery {
-  /** Letters of the alphabet meeting the mastery bar. 0..30. */
+  /** Letters of the alphabet meeting either mastery bar. 0..30. */
   mastered: number;
   total: typeof LETTER_TOTAL;
-  /** Up to five unmastered letters, weakest first. Empty once all 30 are done. */
+  /** Up to five letters that have cleared neither bar, weakest first. */
   weakest: string[];
 }
 
@@ -71,8 +72,13 @@ export interface Progress {
 }
 
 export interface ProgressInputs {
-  /** The user's lifetime per-letter drill counters. Order is irrelevant. */
+  /** The user's lifetime per-letter *trainer* counters. Order is irrelevant. */
   drillStats: readonly DrillStatRow[];
+  /**
+   * The user's per-letter *drill* tallies (`letter_stats`), keyed by the printed
+   * pair. The second half of the mastery union — see `masteredLetters`.
+   */
+  letterStats: readonly LetterStatRow[];
   /** `user_cards` rows in state 'review' — words graduated out of learning. */
   knownWords: number;
   /** `stories` rows with a `finished_at`. */
@@ -128,27 +134,52 @@ function isMastered({ attempts, accuracy }: LetterRecord): boolean {
 }
 
 /**
- * The alphabet letters the user has mastered — what the trainer marks in its
- * summary, and the numerator of the Alphabet goal.
+ * The alphabet letters the user has mastered — the numerator of the Alphabet
+ * goal, and what the trainer marks in its summary.
+ *
+ * A **union of the two ways to learn a letter**, because there are now two:
+ *
+ *  - the trainer's bar — typed correctly at least 8 times, at 90% or better;
+ *  - the drill's — got right three times running in `letter_stats` (`isSolid`).
+ *
+ * They measure different things (typing a letter versus recognising it) and
+ * neither subsumes the other, so requiring both would leave the Alphabet stage
+ * insisting on "0 of 30" beside a drill saying 25 are solid. Requiring *either*
+ * is the honest reading of "he knows this letter", and it is the only one where
+ * the two numbers on the dashboard can agree.
+ *
+ * `letterStats` is keyed by the printed pair ("Б б") and this function speaks
+ * `drill_stats`' lowercase glyphs, so `solidGlyphs` does the conversion.
  */
-export function masteredLetters(stats: readonly DrillStatRow[]): Set<string> {
+export function masteredLetters(
+  stats: readonly DrillStatRow[],
+  letterStats: readonly LetterStatRow[] = [],
+): Set<string> {
+  const solid = solidGlyphs(letterStats);
   const mastered = new Set<string>();
   for (const [letter, record] of letterRecords(stats)) {
-    if (isMastered(record)) mastered.add(letter);
+    if (isMastered(record) || solid.has(letter)) mastered.add(letter);
   }
   return mastered;
 }
 
 /**
- * The unmastered letters worth drilling next: weakest accuracy first, an
- * unattempted letter counting as zero. Ties keep Vuk's order, so the list is
- * stable between renders.
+ * The letters worth drilling next: weakest accuracy first, an unattempted letter
+ * counting as zero. Ties keep Vuk's order, so the list is stable between
+ * renders.
+ *
+ * A letter already solid in the drill is left out for the same reason it counts
+ * towards `mastered`: it is one of the thirty this stage no longer has to point
+ * at. `mastered + weakest` therefore never double-counts a letter.
  */
-function weakestLetters(records: ReadonlyMap<string, LetterRecord>): string[] {
+function weakestLetters(
+  records: ReadonlyMap<string, LetterRecord>,
+  solid: ReadonlySet<string>,
+): string[] {
   return CYRILLIC_ALPHABET
     // `letterRecords` keys every letter, so the fallback is only for the type.
     .map((letter, index) => ({ letter, index, record: records.get(letter) ?? UNATTEMPTED }))
-    .filter(({ record }) => !isMastered(record))
+    .filter(({ letter, record }) => !isMastered(record) && !solid.has(letter))
     .sort((a, b) => a.record.accuracy - b.record.accuracy || a.index - b.index)
     .slice(0, WEAKEST_LIMIT)
     .map((entry) => entry.letter);
@@ -192,8 +223,12 @@ function pluralise(n: number, one: string, many: string): string {
 function nextGoalFor(stage: Stage, progress: Omit<Progress, 'nextGoal'>): string {
   switch (stage) {
     case 'alphabet': {
+      // "Solid" rather than "mastered": it is the word the drill and the
+      // alphabet browser already use on this same screen, and the union now
+      // counts a letter the drill calls solid. The stage is Alphabet exactly
+      // while `mastered < total`, so "to go" is never zero.
       const { mastered, total } = progress.letterMastery;
-      return `Alphabet — master ${pluralise(total - mastered, 'more letter', 'more letters')} (${mastered}/${total})`;
+      return `Alphabet — ${mastered} of ${pluralise(total, 'letter', 'letters')} solid, ${total - mastered} to go`;
     }
     case 'words': {
       const target = progress.knownMilestone;
@@ -231,20 +266,22 @@ function nextGoalFor(stage: Stage, progress: Omit<Progress, 'nextGoal'>): string
  */
 export function computeProgress({
   drillStats,
+  letterStats,
   knownWords,
   storiesRead,
   booksFinished,
 }: ProgressInputs): Progress {
   const records = letterRecords(drillStats);
+  const solid = solidGlyphs(letterStats);
   let mastered = 0;
-  for (const record of records.values()) {
-    if (isMastered(record)) mastered += 1;
+  for (const [letter, record] of records) {
+    if (isMastered(record) || solid.has(letter)) mastered += 1;
   }
 
   const letterMastery: LetterMastery = {
     mastered,
     total: LETTER_TOTAL,
-    weakest: weakestLetters(records),
+    weakest: weakestLetters(records, solid),
   };
 
   const stage = stageFor(mastered, knownWords, storiesRead);

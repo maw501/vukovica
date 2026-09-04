@@ -106,6 +106,57 @@ export function trickyCards(
   return cards.filter((card) => !isSolid(statFor(card, stats)));
 }
 
+/**
+ * The single lowercase glyph a tally key names: "б" from "Б б".
+ *
+ * The two ledgers about letters are keyed differently — `letter_stats` by the
+ * printed pair (`letterKey`), `drill_stats` and `CYRILLIC_ALPHABET` by the
+ * lowercase letter on its own — and `lib/stages.ts` has to line them up to take
+ * the union of "solid in the drill" and "mastered in the trainer". This is the
+ * one place that conversion lives.
+ *
+ * A key that is already a lone glyph passes through unchanged, so a hand-written
+ * or legacy row does not silently vanish from the union.
+ */
+export function letterGlyph(key: string): string {
+  const parts = key.trim().split(/\s+/).filter(Boolean);
+  return (parts[parts.length - 1] ?? '').toLowerCase();
+}
+
+/**
+ * The lowercase glyphs of every letter that is solid in the drill.
+ *
+ * Keyed for `lib/stages.ts`, which speaks `drill_stats`' alphabet rather than
+ * the card's printed pair.
+ */
+export function solidGlyphs(rows: readonly LetterStatRow[]): Set<string> {
+  const solid = new Set<string>();
+  for (const [key, stat] of statsByLetter(rows)) {
+    if (isSolid(stat)) solid.add(letterGlyph(key));
+  }
+  solid.delete('');
+  return solid;
+}
+
+/**
+ * A letter's hint with its example word taken off the end.
+ *
+ * Every hint in `data/phase3/letters.json` ends `" — <word> (<gloss>)"` — it is
+ * where `cards.example_cyr` and `cards.example_en` were lifted from in the first
+ * place (see `lib/__tests__/seed-letters.test.ts`, "takes example_en from the
+ * gloss already inside the mnemonic"). Both screens print that word and its
+ * meaning on their own line right above the hint, so left whole the card reads
+ * "крава / cow" and then "k as in key, no puff of air — крава (cow)".
+ *
+ * Only the *last* em-dash segment goes, and only when it looks like the tail
+ * that was harvested: one word, then a parenthesised gloss. That is what leaves
+ * Р's inner example alone — "…as in прст (finger) — рак (crab)" keeps the прст
+ * and loses only the рак. A hint with no such tail is returned as it stands.
+ */
+export function hintWithoutExample(en: string): string {
+  return en.replace(/\s*—\s*\S+\s+\([^()]*\)\s*$/u, '').trim() || en.trim();
+}
+
 /** A random source in [0, 1). Injected so a run's order is testable. */
 export type Rng = () => number;
 

@@ -20,6 +20,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { MixedText, ScriptText } from '@/components/ScriptText';
+import { hintWithoutExample } from '@/lib/letters';
 import { colors, radius, spacing } from '@/lib/theme';
 import { latinLetterPair } from '@/lib/transliterate';
 import type { CardRow } from '@/lib/types';
@@ -58,9 +59,14 @@ export function LetterFace({
           </ScriptText>
 
           {/* The hint is English about a Serbian letter and usually has Serbian
-              in it, so it is split rather than styled whole. */}
+              in it, so it is split rather than styled whole.
+
+              `hintWithoutExample` takes off its trailing "— word (gloss)": that
+              is the very word and meaning printed on the two lines above, and
+              left in it made the card read "крава / cow" and then "k as in key,
+              no puff of air — крава (cow)". */}
           <MixedText role="en" style={styles.hintLine} testID="card-en">
-            {card.en}
+            {hintWithoutExample(card.en)}
           </MixedText>
         </View>
       ) : (

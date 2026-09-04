@@ -6,7 +6,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildRun,
+  hintWithoutExample,
   isSolid,
+  letterGlyph,
   letterKey,
   LETTER_SOLID_STREAK,
   RATE_LETTER_FN,
@@ -14,6 +16,7 @@ import {
   runSummary,
   shuffle,
   solidCount,
+  solidGlyphs,
   statFor,
   statsByLetter,
   trickyCards,
@@ -22,6 +25,17 @@ import {
 } from '@/lib/letters';
 import type { CardRow, LetterStatRow } from '@/lib/types';
 import { XP_AWARDS } from '@/lib/xp';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+/**
+ * The thirty letters as authored — the source `cards.en` was seeded from, and
+ * therefore the only honest input for a test of what `hintWithoutExample` does
+ * to a *real* hint.
+ */
+const lettersJson: { cyr_pair: string; en: string; example_cyr: string }[] = JSON.parse(
+  readFileSync(path.join(repoRoot, 'data', 'phase3', 'letters.json'), 'utf8'),
+);
 
 function letterCard(pair: string): CardRow {
   return {
@@ -310,6 +324,104 @@ describe('rateLetterParams', () => {
   });
 });
 
+describe('letterGlyph', () => {
+  it('takes the lowercase half of a printed pair', () => {
+    expect(letterGlyph('Б б')).toBe('б');
+    expect(letterGlyph('А а')).toBe('а');
+  });
+
+  it('handles the digraph letters, which are one glyph each', () => {
+    expect(letterGlyph('Љ љ')).toBe('љ');
+    expect(letterGlyph('Њ њ')).toBe('њ');
+    expect(letterGlyph('Џ џ')).toBe('џ');
+  });
+
+  it('passes a lone glyph through, upper or lower case', () => {
+    expect(letterGlyph('б')).toBe('б');
+    expect(letterGlyph('Б')).toBe('б');
+  });
+
+  it('survives odd spacing, and is empty for nothing at all', () => {
+    expect(letterGlyph('  Б   б  ')).toBe('б');
+    expect(letterGlyph('')).toBe('');
+    expect(letterGlyph('   ')).toBe('');
+  });
+});
+
+describe('solidGlyphs', () => {
+  it('has the glyph of every letter at or past the solid streak', () => {
+    const glyphs = solidGlyphs([
+      statRow('Б б', { easy: 5, streak: LETTER_SOLID_STREAK }),
+      statRow('В в', { easy: 9, streak: LETTER_SOLID_STREAK + 4 }),
+      statRow('Г г', { easy: 2, streak: LETTER_SOLID_STREAK - 1 }),
+    ]);
+    expect([...glyphs].sort()).toEqual(['б', 'в']);
+  });
+
+  it('is empty when nothing has been rated', () => {
+    expect(solidGlyphs([]).size).toBe(0);
+  });
+
+  it('drops a row whose key names no letter at all', () => {
+    expect(solidGlyphs([statRow('   ', { streak: 9 })]).size).toBe(0);
+  });
+});
+
+describe('hintWithoutExample', () => {
+  it('drops the trailing "— word (gloss)" the card already prints', () => {
+    expect(hintWithoutExample('k as in key, no puff of air — крава (cow)')).toBe(
+      'k as in key, no puff of air',
+    );
+    expect(hintWithoutExample('b as in book — буба (bug)')).toBe('b as in book');
+  });
+
+  it('keeps an example that is *inside* the hint, and drops only the last one', () => {
+    // Р is the one hint with both: an inner "as in прст (finger)" that is part
+    // of the explanation, and the harvested tail "— рак (crab)" that is not.
+    expect(
+      hintWithoutExample(
+        'rolled r, tapped like the Spanish r; between consonants it becomes the vowel of the syllable, as in прст (finger) — рак (crab)',
+      ),
+    ).toBe(
+      'rolled r, tapped like the Spanish r; between consonants it becomes the vowel of the syllable, as in прст (finger)',
+    );
+  });
+
+  it('leaves a hint with no em-dash exactly as it stands', () => {
+    expect(hintWithoutExample('m as in mum')).toBe('m as in mum');
+    expect(hintWithoutExample('ts as in cats, never a k sound')).toBe(
+      'ts as in cats, never a k sound',
+    );
+  });
+
+  it('leaves an em-dash segment that is not a harvested example', () => {
+    // No parenthesised gloss: this dash is punctuation, not a tail.
+    expect(hintWithoutExample('f as in fish — and nothing else')).toBe(
+      'f as in fish — and nothing else',
+    );
+    // More than one word before the bracket: not the shape the seed harvested.
+    expect(hintWithoutExample('v as in van — two words (here)')).toBe(
+      'v as in van — two words (here)',
+    );
+  });
+
+  it('never returns nothing, however odd the input', () => {
+    expect(hintWithoutExample('— рак (crab)')).toBe('— рак (crab)');
+    expect(hintWithoutExample('')).toBe('');
+  });
+
+  it('leaves a real hint for every one of the thirty letters', () => {
+    for (const letter of lettersJson) {
+      const shortened = hintWithoutExample(letter.en);
+      expect(shortened, letter.cyr_pair).not.toBe('');
+      // The tail really is gone: the example word appears once in the hint at
+      // most (Р keeps прст, never рак), and never as the final bracket.
+      expect(shortened, letter.cyr_pair).not.toContain(`— ${letter.example_cyr} (`);
+      expect(shortened.length, letter.cyr_pair).toBeLessThan(letter.en.length);
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // The migration, read as text.
 //
@@ -318,7 +430,6 @@ describe('rateLetterParams', () => {
 // and only fail (or quietly misbehave) at runtime.
 // ---------------------------------------------------------------------------
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const migration = readFileSync(
   path.join(repoRoot, 'supabase', 'migrations', '20260904120000_letter_stats.sql'),
   'utf8',
@@ -370,6 +481,20 @@ describe('the letter_stats migration keeps its contract', () => {
   it('fills user_id from auth.uid() rather than trusting an argument', () => {
     expect(migration).toContain('auth.uid()');
     expect(migrationParameterNames()).not.toContain('p_user_id');
+  });
+
+  it('refuses a letter that is not one of the cards', () => {
+    // Otherwise a typo or a stale client mints a tally row for a letter that
+    // does not exist, which nothing reads and nothing cleans up. The check has
+    // to be against `kind = 'letter'` specifically: `sr_cyr` is unique across
+    // the whole deck, so without it a *word* would be tallied as a letter.
+    expect(migration).toMatch(
+      /if not exists \(\s*select 1 from public\.cards\s*where cards\.kind = 'letter' and cards\.sr_cyr = p_letter\s*\)/,
+    );
+    // ...and it must come before the write, not after it.
+    expect(migration.indexOf("cards.sr_cyr = p_letter")).toBeLessThan(
+      migration.indexOf('insert into public.letter_stats'),
+    );
   });
 
   it('adds to the tally instead of replacing it', () => {

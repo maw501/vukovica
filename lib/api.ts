@@ -27,11 +27,14 @@ import { buildQueue } from '@/lib/queue';
 import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
 import { computeProgress, type Progress } from '@/lib/stages';
 import {
-  collectLocalDays,
   computeStreak,
   longestStreakFromLocalDays,
+  mergeStudyDayPage,
   startOfLocalDay,
   streakFromLocalDays,
+  streakFromPages,
+  studyDaysFromPages,
+  type StudyDayPageFetcher,
 } from '@/lib/streak';
 import { supabase } from '@/lib/supabase';
 import type {
@@ -211,60 +214,32 @@ async function fetchStudiedAtPage(userId: string, page: number): Promise<(string
   return (data ?? []).map((row) => row.created_at as string | null);
 }
 
-/** One page of both ledgers, and whether either of them has more to give. */
-async function fetchStudyDayPage(
-  userId: string,
-  page: number,
-): Promise<{ timestamps: (string | null)[]; exhausted: boolean }> {
-  const [reviewed, studied] = await Promise.all([
-    fetchReviewedAtPage(userId, page),
-    fetchStudiedAtPage(userId, page),
-  ]);
-  return {
-    timestamps: [...reviewed, ...studied],
-    exhausted: reviewed.length < STREAK_PAGE_SIZE && studied.length < STREAK_PAGE_SIZE,
+/**
+ * One page of both ledgers, merged.
+ *
+ * The I/O is here; the merge rule and the paging arithmetic are
+ * `mergeStudyDayPage` / `streakFromPages` / `studyDaysFromPages` in
+ * `lib/streak.ts`, which vitest can actually import — this file cannot be
+ * imported by a test at all (it reaches `lib/supabase.ts`, and therefore
+ * `react-native`).
+ */
+function studyDayPages(userId: string): StudyDayPageFetcher {
+  return async (page: number) => {
+    const [reviewed, studied] = await Promise.all([
+      fetchReviewedAtPage(userId, page),
+      fetchStudiedAtPage(userId, page),
+    ]);
+    return mergeStudyDayPage(reviewed, studied, STREAK_PAGE_SIZE);
   };
 }
 
 async function fetchStreakDays(userId: string, now: Date): Promise<number> {
-  const days = new Set<string>();
-  let streak = 0;
-
-  for (let page = 0; page < STREAK_MAX_PAGES; page += 1) {
-    const { timestamps, exhausted } = await fetchStudyDayPage(userId, page);
-    if (timestamps.length === 0) break;
-
-    collectLocalDays(timestamps, days);
-    streak = streakFromLocalDays(days, now);
-
-    // Fewer rows than asked for, from both ledgers, means we have the full
-    // history.
-    if (exhausted) break;
-    // If some fetched day is *not* part of the streak, the gap that ends the
-    // streak is already inside this window and older rows cannot extend it —
-    // whichever ledger they would come from.
-    if (days.size > streak) break;
-  }
-
-  return streak;
+  return streakFromPages(studyDayPages(userId), now, STREAK_MAX_PAGES);
 }
 
-/**
- * Every local day the user has ever studied on, from both ledgers.
- *
- * The whole history, with none of `fetchStreakDays`'s early exit: the *longest*
- * streak can be anywhere in it, so there is no window that settles the answer.
- * That is why only the progress screen — opened deliberately, not painted on
- * every dashboard visit — asks for this.
- */
+/** Every local day the user has ever studied on, from both ledgers. */
 async function fetchAllReviewDays(userId: string): Promise<Set<string>> {
-  const days = new Set<string>();
-  for (let page = 0; page < STREAK_MAX_PAGES; page += 1) {
-    const { timestamps, exhausted } = await fetchStudyDayPage(userId, page);
-    collectLocalDays(timestamps, days);
-    if (exhausted) break;
-  }
-  return days;
+  return studyDaysFromPages(studyDayPages(userId), STREAK_MAX_PAGES);
 }
 
 /**
@@ -808,9 +783,15 @@ async function countStoriesFinished(userId: string): Promise<number> {
 /**
  * Where the learner is on the staged path, in one batch of reads.
  *
- * The four inputs are independent, so they go out together; `computeProgress`
+ * The five inputs are independent, so they go out together; `computeProgress`
  * turns them into the stage and goal without any further I/O. `listDrillStats`
  * reaches for the session again, which is a local read, not a round trip.
+ *
+ * `listLetterStats` is here because letter mastery is now the union of the two
+ * ledgers (see `masteredLetters`), and this is the only place that decides it —
+ * the dashboard and the progress screen must not be able to disagree about how
+ * many letters are done. It costs one more parallel read of at most thirty rows
+ * on a primary-key index, inside a batch that was already making four.
  *
  * The books count needs none of `countStoriesFinished`'s defensiveness: `books`
  * ships in the same migration as everything else phase 3 reads, so a failure
@@ -819,16 +800,18 @@ async function countStoriesFinished(userId: string): Promise<number> {
 async function getProgress(): Promise<Progress> {
   const userId = await requireUserId();
 
-  const [drillStats, known, storiesRead, booksFinished] = await Promise.all([
+  const [drillStats, letterStats, known, storiesRead, booksFinished] = await Promise.all([
     listDrillStats(),
+    listLetterStats(),
     // "Known" is a word that has graduated out of learning: `state = 'review'`.
     // 'relearning' is deliberately excluded — a lapsed word is one he no longer
     // knows, and counting it would make the milestone ladder go backwards
     // silently rather than honestly.
     //
-    // Words only: letter cards share this table, and letter *mastery* is the
-    // trainer's `drill_stats`, not FSRS (spec §4). Counting a graduated letter
-    // as a known word would inflate the Words ladder by up to thirty.
+    // Words only: letter cards share this table, and letter mastery is the
+    // trainer's `drill_stats` and the drill's `letter_stats`, never FSRS
+    // (spec §4). Counting a graduated letter as a known word would inflate the
+    // Words ladder by up to thirty.
     supabase
       .from('user_cards')
       .select('*, cards!inner(kind)', { count: 'exact', head: true })
@@ -848,6 +831,7 @@ async function getProgress(): Promise<Progress> {
 
   return computeProgress({
     drillStats,
+    letterStats,
     knownWords: known.count ?? 0,
     storiesRead,
     booksFinished: booksFinished.count ?? 0,

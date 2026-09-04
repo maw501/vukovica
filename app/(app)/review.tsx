@@ -108,6 +108,10 @@ export default function ReviewScreen() {
     // than a slightly stale one.
     staleTime: 0,
     refetchOnWindowFocus: false,
+    // Nothing on the redirect path needs the queue either, and it is the
+    // expensive one: due rows plus new cards, fetched for a screen that
+    // unmounts before it paints.
+    enabled: !wantsLetters,
   });
   const settings = useQuery({
     queryKey: ['settings'],
@@ -168,8 +172,9 @@ export default function ReviewScreen() {
           userCard: latestRows.current.get(cardId) ?? null,
         });
         latestRows.current.set(cardId, saved);
-        // XP for the answer, both decks alike: a letter answered is a card
-        // answered (spec §10 sets one review tariff, not one per deck).
+        // XP for the answer: one review tariff (spec §10). The letters drill
+        // pays exactly the same 2 from inside `rate_letter`, so a morning of
+        // letters and a morning of words are worth the same.
         //
         // Awaited so `onSettled`'s invalidation cannot race the insert, but
         // never allowed to fail the answer: the review itself is saved by this
@@ -334,14 +339,10 @@ export default function ReviewScreen() {
   // from the middle of the hook list would change the order between renders.
   if (wantsLetters) return <Redirect href="/letters" />;
 
-  if (queue.isPending || settings.isPending || session === null) {
-    return (
-      <View style={styles.centred}>
-        <ActivityIndicator color={colors.primary} />
-      </View>
-    );
-  }
-
+  // The error branch comes FIRST, for the same reason it does on the letters
+  // screen: a failed queue is no longer pending, but the effect above will not
+  // build a session without its data, so `session` stays null for ever. The
+  // other way round, this message is unreachable behind a permanent spinner.
   if (queue.isError) {
     return (
       <View style={styles.centred}>
@@ -351,6 +352,14 @@ export default function ReviewScreen() {
         <Pressable style={styles.textButton} onPress={() => void queue.refetch()}>
           <Text style={styles.textButtonLabel}>Try again</Text>
         </Pressable>
+      </View>
+    );
+  }
+
+  if (queue.isPending || settings.isPending || session === null) {
+    return (
+      <View style={styles.centred}>
+        <ActivityIndicator color={colors.primary} />
       </View>
     );
   }

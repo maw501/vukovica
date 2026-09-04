@@ -134,3 +134,109 @@ export function startOfLocalDay(now: Date = new Date()): Date {
   start.setHours(0, 0, 0, 0);
   return start;
 }
+
+// ---------------------------------------------------------------------------
+// Two ledgers, one streak
+// ---------------------------------------------------------------------------
+
+/**
+ * A day of study is recorded in two places, and the streak is their union.
+ *
+ * A word review writes `review_logs`. A letter rating writes no such row — the
+ * drill schedules nothing, so it has no grade, no interval and no state to log —
+ * but it does write its XP, one `xp_events` row of kind `review`, in the same
+ * transaction as the tally. So the caller pages both ledgers newest-first and
+ * hands each page here.
+ *
+ * Pure on purpose: vitest cannot import `api.ts` (it reaches `lib/supabase.ts`
+ * and therefore `react-native`), and the rule below — in particular *when it is
+ * safe to stop paging* — is the only genuinely fiddly part of a two-ledger
+ * streak.
+ */
+export interface StudyDayPage {
+  /** Both ledgers' timestamps for this page, unordered and possibly null. */
+  timestamps: (string | null | undefined)[];
+  /** True when neither ledger has an older row left to give. */
+  exhausted: boolean;
+}
+
+/**
+ * One page of each ledger, merged.
+ *
+ * The order of the merged array does not matter: every consumer turns it
+ * straight into a set of local day keys, through the same `localDayKey`, so the
+ * two ledgers cannot disagree about where a day begins. What does matter is
+ * `exhausted`, and it needs **both** sides to be short: a full page from either
+ * ledger means that ledger has older rows, and those rows could still extend the
+ * streak.
+ */
+export function mergeStudyDayPage(
+  reviewed: readonly (string | null | undefined)[],
+  studied: readonly (string | null | undefined)[],
+  pageSize: number,
+): StudyDayPage {
+  return {
+    timestamps: [...reviewed, ...studied],
+    exhausted: reviewed.length < pageSize && studied.length < pageSize,
+  };
+}
+
+/** Fetches page `page` (0-based) of both ledgers, newest first. */
+export type StudyDayPageFetcher = (page: number) => Promise<StudyDayPage>;
+
+/**
+ * The current streak, walking back a page at a time until the answer is settled.
+ *
+ * Two ways to stop early, and both are sound because every page is older than
+ * the one before it:
+ *
+ *  - `exhausted` — there is no more history, in either ledger.
+ *  - `days.size > streak` — some day already fetched is *not* part of the
+ *    streak, so the gap that ends the streak is inside this window. Everything
+ *    still unfetched is older than that gap, whichever ledger it would come
+ *    from, so it cannot lengthen the streak.
+ *
+ * `maxPages` is the backstop against a pathological history; a daily learner
+ * settles on page 0.
+ */
+export async function streakFromPages(
+  fetchPage: StudyDayPageFetcher,
+  now: Date = new Date(),
+  maxPages = 10,
+): Promise<number> {
+  const days = new Set<string>();
+  let streak = 0;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const { timestamps, exhausted } = await fetchPage(page);
+    if (timestamps.length === 0) break;
+
+    collectLocalDays(timestamps, days);
+    streak = streakFromLocalDays(days, now);
+
+    if (exhausted) break;
+    if (days.size > streak) break;
+  }
+
+  return streak;
+}
+
+/**
+ * Every local day the user has ever studied on, from both ledgers.
+ *
+ * No early exit is possible here: the *longest* streak can be anywhere in the
+ * history, so no window settles it. That is why only the progress screen —
+ * opened deliberately, not painted on every dashboard visit — asks for this.
+ */
+export async function studyDaysFromPages(
+  fetchPage: StudyDayPageFetcher,
+  maxPages = 10,
+): Promise<Set<string>> {
+  const days = new Set<string>();
+  for (let page = 0; page < maxPages; page += 1) {
+    const { timestamps, exhausted } = await fetchPage(page);
+    collectLocalDays(timestamps, days);
+    if (exhausted) break;
+  }
+  return days;
+}
