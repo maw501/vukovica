@@ -106,7 +106,8 @@ export default function ProgressScreen() {
                 testID="letters-mastered"
               />
               <Text style={styles.note}>
-                A letter counts as mastered after 8 tries in the trainer at 90% right.
+                A letter counts as mastered once you get it right three times in a row in the
+                letters drill, or after 8 tries in the trainer at 90% right.
               </Text>
             </Section>
 
