@@ -176,8 +176,11 @@ PWA manifest and the icons. There is no server side.
 ```sh
 npx vercel login
 cp -R .vercel dist/.vercel   # copy the project link into the build output
-cd dist && npx vercel deploy --prod --yes && cd ..
+cd dist && npx vercel deploy --prod --yes --scope team_4Oq4DlPcf9mktzOfQlyvDFue && cd ..
 ```
+
+> `--scope` is required since Vercel CLI 59: without it the deploy fails with a bare `"Not authorized"` even though `vercel whoami` is fine and the project is linked (2026-09-04).
+
 
 Answer the setup prompts once (scope, project name `vukovica`); the link is
 stored in `.vercel/` at the repo root. NEVER run `npx vercel deploy --prod dist`
@@ -342,7 +345,7 @@ node --env-file=.env.hosted scripts/seed.mjs  # if the card files changed
 node scripts/generate-audio.mjs --hosted      # if cards were added
 mv .env.local .env.local.dev && rm -rf dist && npm run build:web; mv .env.local.dev .env.local
 cp -R .vercel dist/.vercel
-cd dist && npx vercel deploy --prod --yes && cd ..
+cd dist && npx vercel deploy --prod --yes --scope team_4Oq4DlPcf9mktzOfQlyvDFue && cd ..
 ```
 
 Always check the grep in step 3 before uploading. Env values baked into the
@@ -457,7 +460,7 @@ grep -ro '<project-ref>\.supabase\.co' dist/_expo | head -1     # expect a hit
 grep -ro '127\.0\.0\.1:54321' dist/_expo | head -1              # expect nothing
 
 cp -R .vercel dist/.vercel
-cd dist && npx vercel deploy --prod --yes && cd ..
+cd dist && npx vercel deploy --prod --yes --scope team_4Oq4DlPcf9mktzOfQlyvDFue && cd ..
 ```
 
 If the export dies part-way, restore `.env.local.dev` before debugging anything
