@@ -147,17 +147,27 @@ export function GlossSheet({
 
 /** A tapped word the deck already has: the card, and how to hear it. */
 function KnownWord({ card, ttsEnabled }: { card: CardRow; ttsEnabled: boolean }) {
+  // A quick-added word has no example yet -- the columns hold an empty string
+  // until a backfill fills them in -- and a sheet with two blank lines in it
+  // reads as a card that failed to load.
+  const exampleCyr = card.example_cyr.trim();
+  const exampleEn = card.example_en.trim();
+
   return (
     <View style={styles.sheetBody} testID="sheet-card">
       <ScriptText role="en" style={styles.wordEn}>
         {card.en}
       </ScriptText>
-      <ScriptText role="cyr" style={styles.wordExample}>
-        {card.example_cyr}
-      </ScriptText>
-      <ScriptText role="en" style={styles.wordExampleEn}>
-        {card.example_en}
-      </ScriptText>
+      {exampleCyr ? (
+        <ScriptText role="cyr" style={styles.wordExample}>
+          {exampleCyr}
+        </ScriptText>
+      ) : null}
+      {exampleEn ? (
+        <ScriptText role="en" style={styles.wordExampleEn}>
+          {exampleEn}
+        </ScriptText>
+      ) : null}
       <View style={styles.sheetFooter}>
         {/* Nothing to add to the deck: the word is already a card, and it
             reaches the queue on its own as a new card. Pre-inserting a

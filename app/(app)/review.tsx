@@ -548,6 +548,15 @@ function WordFace({
   revealed: boolean;
   showLatin: boolean;
 }) {
+  // Every one of these can be empty on a quick-added card (`/add` asks only for
+  // the headword and the English), so each is hidden rather than printed blank.
+  const meta = [card.pos, card.gender, card.aspect].filter(
+    (value): value is string => Boolean(value && value.trim()),
+  );
+  const exampleCyr = card.example_cyr.trim();
+  const exampleEn = card.example_en.trim();
+  const hasExample = exampleCyr !== '' || exampleEn !== '';
+
   return (
     <>
       <ScriptText role="cyr" style={styles.cyrillic} testID="card-cyr">
@@ -564,29 +573,40 @@ function WordFace({
           <ScriptText role="en" style={styles.english} testID="card-en">
             {card.en}
           </ScriptText>
-          <View style={styles.metaRow}>
-            {[card.pos, card.gender, card.aspect]
-              .filter((value): value is string => Boolean(value))
-              .map((value) => (
+          {meta.length > 0 ? (
+            <View style={styles.metaRow}>
+              {meta.map((value) => (
                 <Text key={value} style={styles.meta}>
                   {value}
                 </Text>
               ))}
-          </View>
-
-          <View style={styles.divider} />
-
-          <ScriptText role="cyr" style={styles.exampleCyr} testID="card-example-cyr">
-            {card.example_cyr}
-          </ScriptText>
-          {showLatin ? (
-            <ScriptText role="lat" style={styles.exampleLat}>
-              {cyrToLat(card.example_cyr)}
-            </ScriptText>
+            </View>
           ) : null}
-          <ScriptText role="en" style={styles.exampleEn}>
-            {card.example_en}
-          </ScriptText>
+
+          {/* A quick-added word has no example yet: the columns hold an empty
+              string until a backfill fills them in, and a rule over nothing is
+              worse than no rule. */}
+          {hasExample ? (
+            <>
+              <View style={styles.divider} />
+
+              {exampleCyr ? (
+                <ScriptText role="cyr" style={styles.exampleCyr} testID="card-example-cyr">
+                  {exampleCyr}
+                </ScriptText>
+              ) : null}
+              {showLatin && exampleCyr ? (
+                <ScriptText role="lat" style={styles.exampleLat}>
+                  {cyrToLat(exampleCyr)}
+                </ScriptText>
+              ) : null}
+              {exampleEn ? (
+                <ScriptText role="en" style={styles.exampleEn}>
+                  {exampleEn}
+                </ScriptText>
+              ) : null}
+            </>
+          ) : null}
         </View>
       ) : (
         <Text style={styles.hint}>Tap to show the answer</Text>
