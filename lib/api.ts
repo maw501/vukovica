@@ -23,8 +23,20 @@ import {
 import { gradeCard, newUserCard, type ReviewGrade } from '@/lib/fsrs';
 import { BUMP_GRAMMAR_STATS_FN, bumpGrammarStatsParams } from '@/lib/grammar';
 import { RATE_LETTER_FN, rateLetterParams } from '@/lib/letters';
-import { MARK_KNOWN_FN, markKnownParams, type LibraryEntry } from '@/lib/library';
+import {
+  MARK_KNOWN_FN,
+  isKnown,
+  markKnownParams,
+  type LibraryEntry,
+} from '@/lib/library';
 import { buildQueue } from '@/lib/queue';
+import {
+  RATE_READ_FN,
+  buildThemes,
+  rateReadParams,
+  statsByCard,
+  type Theme,
+} from '@/lib/readDrill';
 import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
 import { computeProgress, type Progress } from '@/lib/stages';
 import {
@@ -48,6 +60,7 @@ import type {
   GrammarStatRow,
   GrammarTopicRow,
   LetterStatRow,
+  ReadStatRow,
   RequestRow,
   RequestSource,
   SettingsRow,
@@ -819,6 +832,99 @@ async function rateLetter(letter: string, gotIt: boolean): Promise<LetterStatRow
     throw new Error('The server did not return the saved letter. The rating may not be recorded.');
   }
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// "Read it" — reading whole words in Cyrillic
+// ---------------------------------------------------------------------------
+
+/**
+ * How the read tallies page their read. My words' reasoning, one table along:
+ * the deck is 724 words and a reader who has rated every one of them would sit
+ * a single page short of PostgREST's cap, which is too close to leave to luck.
+ */
+const READ_STATS_PAGE_SIZE = MAX_ROWS;
+const READ_STATS_MAX_PAGES = 10;
+
+/**
+ * The user's per-word reading tallies.
+ *
+ * `buildRun` turns them into the order of the next run and `buildThemes` into
+ * the "N words · M solid" on the picker. One row per word he has actually
+ * read here, so this is small until it is not — hence the paging.
+ */
+async function listReadStats(): Promise<ReadStatRow[]> {
+  const userId = await requireUserId();
+
+  const rows: ReadStatRow[] = [];
+  for (let page = 0; page < READ_STATS_MAX_PAGES; page += 1) {
+    const from = page * READ_STATS_PAGE_SIZE;
+    const { data, error } = await supabase
+      .from('read_stats')
+      .select('*')
+      // Redundant under RLS, but it is what makes this a primary-key range.
+      .eq('user_id', userId)
+      .order('card_id', { ascending: true })
+      .range(from, from + READ_STATS_PAGE_SIZE - 1)
+      .returns<ReadStatRow[]>();
+    if (error) throw error;
+
+    const batch = data ?? [];
+    rows.push(...batch);
+    if (batch.length < READ_STATS_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+/**
+ * Record one reading of one word, and the XP it earns.
+ *
+ * Through `rate_read` rather than an upsert for the two reasons `rateLetter`
+ * gives: PostgREST's upsert *replaces* a count where this has to add to it, and
+ * the XP has to land in the same transaction — the ring and the day streak
+ * are both read off `xp_events`, so a reading that tallied but did not pay
+ * would be a reading that did not happen as far as the dashboard is concerned.
+ */
+async function rateRead(cardId: string, gotIt: boolean): Promise<ReadStatRow> {
+  const { data, error } = await supabase
+    .rpc(RATE_READ_FN, rateReadParams(cardId, gotIt))
+    // The function returns `public.read_stats`, i.e. one row rather than a set,
+    // so PostgREST answers with a bare object -- `.single()` is what tells
+    // supabase-js to type it as one.
+    .single<ReadStatRow>();
+  if (error) throw error;
+  // The drill feeds this straight back into the tallies it is holding, so a
+  // response that is not a row would quietly corrupt the next run's order.
+  if (!data || typeof data.card_id !== 'string') {
+    throw new Error('The server did not return the saved word. The reading may not be recorded.');
+  }
+  return data;
+}
+
+/**
+ * The themes the picker offers: every domain the deck actually has, plus "My
+ * words", each with how many words it holds and how many are solid.
+ *
+ * Three reads the app already makes, batched into one round trip and folded by
+ * `buildThemes`, rather than a `group by` this schema has no view for. Each is
+ * cached under its own key elsewhere, so the deck read here is the same one the
+ * Deck screen makes and the library read the same one My words makes.
+ *
+ * Known is `user_cards.state = 'review'` — `lib/library.ts`'s one rule, the
+ * same one the dashboard's Words ladder counts by, so "My words" here can never
+ * disagree with "My words" there.
+ */
+async function listThemes(): Promise<Theme[]> {
+  const [cards, stats, library] = await Promise.all([
+    listCards(),
+    listReadStats(),
+    getLibrary(),
+  ]);
+
+  const knownIds = new Set(
+    library.filter((entry) => isKnown(entry.userCard)).map((entry) => entry.card.id),
+  );
+  return buildThemes({ cards, stats: statsByCard(stats), knownIds });
 }
 
 // ---------------------------------------------------------------------------
@@ -1600,6 +1706,7 @@ async function recordGrammarRun(
 }
 
 export type { LibraryEntry } from '@/lib/library';
+export type { Theme } from '@/lib/readDrill';
 
 export const api = {
   getSettings,
@@ -1618,6 +1725,9 @@ export const api = {
   listLetterCards,
   listLetterStats,
   rateLetter,
+  listReadStats,
+  rateRead,
+  listThemes,
   getProgress,
   awardXp,
   getXpSummary,
