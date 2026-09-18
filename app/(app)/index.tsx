@@ -301,6 +301,10 @@ export default function DashboardScreen() {
                       ? libraryBlurb(progress.data.knownWords)
                       : undefined
                 }
+                // Most of Mark's vocabulary comes from his wife rather than
+                // from the deck, so the way to write one down sits beside the
+                // list it lands on, one tap from the dashboard.
+                action={{ label: 'Add a word', href: '/add' }}
               />
             ) : key === 'requests' ? (
               <ActivityButton
@@ -559,6 +563,7 @@ function ActivityButton({
   activity,
   badge,
   blurb,
+  action,
 }: {
   activityKey: ActivityKey;
   activity: Activity;
@@ -566,13 +571,24 @@ function ActivityButton({
   badge?: string;
   /** Overrides `activity.blurb` when the row has something live to say. */
   blurb?: string;
+  /**
+   * A second, quieter way in, beside the row rather than inside it: a
+   * `Pressable` within a `Pressable` is a button inside a button, which is
+   * invalid HTML on web as well as an ambiguous tap (the same arrangement the
+   * library row uses for its speaker).
+   */
+  action?: { label: string; href: Href };
 }) {
   const router = useRouter();
   const line = blurb ?? activity.blurb;
 
-  return (
+  const row = (
     <Pressable
-      style={({ pressed }) => [styles.activity, pressed && styles.activityPressed]}
+      style={({ pressed }) => [
+        styles.activity,
+        action ? styles.activityGrow : null,
+        pressed && styles.activityPressed,
+      ]}
       accessibilityRole="button"
       // The live blurb rather than the badge: "3 due · 2 new" and "2 waiting to
       // be answered" both say what the number means, which a bare count read
@@ -592,6 +608,23 @@ function ActivityButton({
       ) : null}
       <Text style={styles.chevron}>›</Text>
     </Pressable>
+  );
+
+  if (!action) return row;
+
+  return (
+    <View style={styles.activityRow}>
+      {row}
+      <Pressable
+        style={({ pressed }) => [styles.activityAction, pressed && styles.activityPressed]}
+        accessibilityRole="button"
+        accessibilityLabel={action.label}
+        testID={`activity-${activityKey}-action`}
+        onPress={() => router.push(action.href)}
+      >
+        <Text style={styles.activityActionLabel}>{action.label}</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -709,6 +742,22 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   activityPressed: { opacity: 0.8 },
+  activityRow: { flexDirection: 'row', alignItems: 'stretch', gap: spacing.sm },
+  activityGrow: { flex: 1 },
+  activityAction: {
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surface,
+  },
+  activityActionLabel: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   activityText: { flexShrink: 1, gap: 2 },
   activityLabel: { fontSize: 20, fontWeight: '600', color: colors.text },
   activityBlurb: { fontSize: 13, color: colors.textMuted },

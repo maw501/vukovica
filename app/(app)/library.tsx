@@ -123,14 +123,25 @@ export default function LibraryScreen() {
     return (
       <View style={styles.centred} testID="library-empty">
         <Text style={styles.emptyTitle}>No words yet</Text>
-        <Text style={styles.muted}>Words you review land here as you learn them.</Text>
+        <Text style={styles.muted}>
+          Words you review land here as you learn them — and a word you already know can
+          go straight in.
+        </Text>
         <Pressable
           style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
+          onPress={() => router.push('/add')}
+          accessibilityRole="button"
+          testID="library-add-empty"
+        >
+          <Text style={styles.primaryButtonText}>+ Add a word</Text>
+        </Pressable>
+        <Pressable
+          style={styles.textButton}
           onPress={() => router.push('/review')}
           accessibilityRole="button"
           testID="library-review-link"
         >
-          <Text style={styles.primaryButtonText}>Start reviewing</Text>
+          <Text style={styles.textButtonLabel}>Start reviewing</Text>
         </Pressable>
       </View>
     );
@@ -139,9 +150,23 @@ export default function LibraryScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.headline} testID="library-headline">
-          {libraryHeadline(counts.known, counts.learning)}
-        </Text>
+        <View style={styles.headlineRow}>
+          <Text style={styles.headline} testID="library-headline">
+            {libraryHeadline(counts.known, counts.learning)}
+          </Text>
+          {/* The shelf is also where a word gets put on it. Mark learns most of
+              his vocabulary from his wife rather than from the deck, so the way
+              to record one belongs on the screen that lists them. */}
+          <Pressable
+            style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+            onPress={() => router.push('/add')}
+            accessibilityRole="button"
+            accessibilityLabel="Add a word"
+            testID="library-add"
+          >
+            <Text style={styles.addButtonText}>+ Add a word</Text>
+          </Pressable>
+        </View>
 
         <View style={styles.tabs}>
           {SECTIONS.map(({ key, label }) => (
@@ -248,6 +273,12 @@ function LibraryRow({
 }) {
   const { card, userCard } = entry;
   const seen = learnedLabel(userCard.last_review);
+  // A quick-added word has no example yet — the columns hold an empty string
+  // until a backfill fills them in — so there is nothing to open, and the row
+  // says so by not being tappable rather than by opening onto a blank panel.
+  const exampleCyr = card.example_cyr.trim();
+  const exampleEn = card.example_en.trim();
+  const hasExample = exampleCyr !== '' || exampleEn !== '';
 
   return (
     <View style={styles.row}>
@@ -255,6 +286,7 @@ function LibraryRow({
         <Pressable
           style={styles.rowTap}
           onPress={onToggle}
+          disabled={!hasExample}
           accessibilityRole="button"
           accessibilityState={{ expanded: open }}
           accessibilityLabel={`${card.sr_cyr}, ${card.en}`}
@@ -288,19 +320,23 @@ function LibraryRow({
         />
       </View>
 
-      {open ? (
+      {open && hasExample ? (
         <View style={styles.expanded} testID={`library-example-${card.sr_cyr}`}>
-          <ScriptText role="cyr" style={styles.exampleCyr}>
-            {card.example_cyr}
-          </ScriptText>
-          {showLatin ? (
-            <ScriptText role="lat" style={styles.exampleLat}>
-              {cyrToLat(card.example_cyr)}
+          {exampleCyr ? (
+            <ScriptText role="cyr" style={styles.exampleCyr}>
+              {exampleCyr}
             </ScriptText>
           ) : null}
-          <ScriptText role="en" style={styles.exampleEn}>
-            {card.example_en}
-          </ScriptText>
+          {showLatin && exampleCyr ? (
+            <ScriptText role="lat" style={styles.exampleLat}>
+              {cyrToLat(exampleCyr)}
+            </ScriptText>
+          ) : null}
+          {exampleEn ? (
+            <ScriptText role="en" style={styles.exampleEn}>
+              {exampleEn}
+            </ScriptText>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -324,7 +360,21 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.sm,
   },
-  headline: { fontSize: 15, color: colors.text, fontWeight: '600' },
+  headlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  headline: { fontSize: 15, color: colors.text, fontWeight: '600', flexShrink: 1 },
+  addButton: {
+    minHeight: touchTarget - 16,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  addButtonText: { color: colors.primaryOn, fontSize: 14, fontWeight: '600' },
   tabs: { flexDirection: 'row', gap: spacing.sm },
   tab: {
     flex: 1,
