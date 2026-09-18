@@ -6,7 +6,7 @@
  * between a hand-typed form and an `insert into public.cards`.
  */
 
-import { latToCyr } from '@/lib/transliterate';
+import { latToCyr } from "@/lib/transliterate";
 
 /** `public.cards` minus the columns the database or the server owns. */
 export interface CardInput {
@@ -25,35 +25,40 @@ export interface CardInput {
  * not a rule.
  */
 export const CARD_DOMAINS = [
-  'family',
-  'baby',
-  'home',
-  'food',
-  'greetings-courtesy',
-  'verbs-core',
-  'adjectives-core',
-  'numbers-time',
-  'everyday-objects',
-  'phrases',
+  "family",
+  "baby",
+  "home",
+  "food",
+  "greetings-courtesy",
+  "verbs-core",
+  "adjectives-core",
+  "numbers-time",
+  "everyday-objects",
+  "phrases",
+  // The 2026-09-18 themes (data/phase3/themes.json).
+  "clothes",
+  "body",
+  "animals",
+  "toddler-talk",
   // Not a subject like the rest of them, but where the card came from: the
   // two-box quick add has nobody to ask what a word is about, so it files them
   // here (`QUICK_ADD_DOMAIN` in `lib/quickAdd.ts`). It is in the picker so that
   // a card can be moved *out* of it once the long form has been filled in.
-  'my-words',
+  "my-words",
 ] as const;
 
 /** The parts of speech the picker offers. */
 export const CARD_POS = [
-  'noun',
-  'verb',
-  'adjective',
-  'adverb',
-  'number',
-  'interjection',
-  'phrase',
+  "noun",
+  "verb",
+  "adjective",
+  "adverb",
+  "number",
+  "interjection",
+  "phrase",
 ] as const;
 
-export const CARD_GENDERS = ['m', 'f', 'n'] as const;
+export const CARD_GENDERS = ["m", "f", "n"] as const;
 
 /**
  * The verb aspect, as `cards.aspect` stores it. The stored values are the
@@ -61,7 +66,7 @@ export const CARD_GENDERS = ['m', 'f', 'n'] as const;
  * metadata row prints — but nothing in the *form* says them out loud; see
  * `CARD_ASPECT_LABELS`.
  */
-export const CARD_ASPECTS = ['impf', 'pf'] as const;
+export const CARD_ASPECTS = ["impf", "pf"] as const;
 
 /**
  * What the picker calls each aspect.
@@ -73,41 +78,44 @@ export const CARD_ASPECTS = ['impf', 'pf'] as const;
  * it" — so it is said in the words that describe it rather than the words that
  * name it. The stored values are untouched.
  */
-export const CARD_ASPECT_LABELS: Readonly<Record<(typeof CARD_ASPECTS)[number], string>> = {
-  impf: 'ongoing',
-  pf: 'one-off',
+export const CARD_ASPECT_LABELS: Readonly<
+  Record<(typeof CARD_ASPECTS)[number], string>
+> = {
+  impf: "ongoing",
+  pf: "one-off",
 };
 
 /** The one line under the picker that says what the two choices mean. */
-export const CARD_ASPECT_HINT = 'ongoing = happening or repeated · one-off = done once';
+export const CARD_ASPECT_HINT =
+  "ongoing = happening or repeated · one-off = done once";
 
 export const EMPTY_CARD_INPUT: CardInput = {
-  sr_cyr: '',
-  en: '',
-  pos: '',
+  sr_cyr: "",
+  en: "",
+  pos: "",
   gender: null,
   aspect: null,
-  example_cyr: '',
-  example_en: '',
-  domain: '',
+  example_cyr: "",
+  example_en: "",
+  domain: "",
 };
 
 /** Fields a card cannot be saved without. */
 const REQUIRED_FIELDS = [
-  'sr_cyr',
-  'en',
-  'pos',
-  'example_cyr',
-  'example_en',
-  'domain',
+  "sr_cyr",
+  "en",
+  "pos",
+  "example_cyr",
+  "example_en",
+  "domain",
 ] as const satisfies readonly (keyof CardInput)[];
 
 const CYRILLIC = /\p{Script=Cyrillic}/u;
 
 function optional(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
+  if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  return trimmed === '' ? null : trimmed;
+  return trimmed === "" ? null : trimmed;
 }
 
 /** Whitespace off every field; blank optionals become null (the column default). */
@@ -128,19 +136,21 @@ export function trimCardInput(input: CardInput): CardInput {
  * Per-field problems, keyed by field name. An empty object means the card is
  * ready to save. The messages are shown verbatim under the inputs.
  */
-export function cardInputErrors(input: CardInput): Partial<Record<keyof CardInput, string>> {
+export function cardInputErrors(
+  input: CardInput,
+): Partial<Record<keyof CardInput, string>> {
   const card = trimCardInput(input);
   const errors: Partial<Record<keyof CardInput, string>> = {};
 
   for (const field of REQUIRED_FIELDS) {
-    if (card[field] === '') errors[field] = 'Required.';
+    if (card[field] === "") errors[field] = "Required.";
   }
 
   // The whole app assumes `sr_cyr` is Cyrillic: the review screen shows it big,
   // and search derives the Latin form from it. A Latin headword would quietly
   // break both.
-  if (card.sr_cyr !== '' && !CYRILLIC.test(card.sr_cyr)) {
-    errors.sr_cyr = 'Must be written in Cyrillic.';
+  if (card.sr_cyr !== "" && !CYRILLIC.test(card.sr_cyr)) {
+    errors.sr_cyr = "Must be written in Cyrillic.";
   }
 
   return errors;
@@ -153,6 +163,6 @@ export function cardInputErrors(input: CardInput): Partial<Record<keyof CardInpu
  */
 export function toCyrillicHeadword(input: string): string {
   const trimmed = input.trim();
-  if (trimmed === '' || CYRILLIC.test(trimmed)) return trimmed;
+  if (trimmed === "" || CYRILLIC.test(trimmed)) return trimmed;
   return latToCyr(trimmed);
 }
