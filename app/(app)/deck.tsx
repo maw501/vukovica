@@ -1,6 +1,11 @@
 /**
- * The deck: browse and search every card, edit or delete one, and add a new
- * word by hand.
+ * The deck: browse and search every card, edit or delete one, and fill in a new
+ * one by hand.
+ *
+ * The **+** goes to `/add` rather than to this screen's own form: two boxes is
+ * what Mark will actually use. The long form is still here, reached by
+ * `/deck?add=1` from the link at the bottom of that screen, for the words that
+ * want an example sentence.
  *
  * One screen with three views rather than three routes — the list's scroll
  * position and search text survive a trip into a card and back, which is what
@@ -13,6 +18,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -61,7 +67,14 @@ function toInput(card: CardRow): CardInput {
 
 export default function DeckScreen() {
   const queryClient = useQueryClient();
-  const [view, setView] = useState<DeckView>({ kind: 'list' });
+  const router = useRouter();
+  // `/deck?add=1` opens straight on the long form. That is how `/add`'s "Need
+  // the long form?" link gets here, and it is a starting view rather than a
+  // fourth one: cancelling out of it lands on the list like any other add.
+  const { add } = useLocalSearchParams<{ add?: string }>();
+  const [view, setView] = useState<DeckView>(() =>
+    add === '1' ? { kind: 'add' } : { kind: 'list' },
+  );
   const [query, setQuery] = useState('');
 
   const cards = useQuery({ queryKey: ['cards'], queryFn: () => api.listCards() });
@@ -140,9 +153,12 @@ export default function DeckScreen() {
           autoCorrect={false}
           testID="deck-search"
         />
+        {/* Quick add, not this screen's own form: two boxes is what Mark will
+            actually use at the kitchen table, and the long form is one link
+            further on from there. */}
         <Pressable
           style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
-          onPress={() => setView({ kind: 'add' })}
+          onPress={() => router.push('/add')}
           accessibilityRole="button"
           accessibilityLabel="Add a word"
           testID="deck-add"

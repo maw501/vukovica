@@ -25,6 +25,7 @@ import { BUMP_GRAMMAR_STATS_FN, bumpGrammarStatsParams } from '@/lib/grammar';
 import { RATE_LETTER_FN, rateLetterParams } from '@/lib/letters';
 import { MARK_KNOWN_FN, markKnownParams, type LibraryEntry } from '@/lib/library';
 import { buildQueue } from '@/lib/queue';
+import { QUICK_ADD_FN, quickAddParams, type QuickAddResult } from '@/lib/quickAdd';
 import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
 import { computeProgress, type Progress } from '@/lib/stages';
 import {
@@ -713,6 +714,36 @@ async function markKnown(cardId: string): Promise<UserCardRow> {
   // response that is not a row would corrupt the next answer rather than fail.
   if (!data || typeof data.card_id !== 'string') {
     throw new Error('The server did not return the saved card. The word may not be marked known.');
+  }
+  return data;
+}
+
+/**
+ * Quick add: a word and what it means, straight into My words.
+ *
+ * One RPC rather than `addCard` followed by `markKnown`, because the two writes
+ * must not come apart — a card with no `user_cards` row is a word the app thinks
+ * he has never met, which is the opposite of what the button says. It is also
+ * the call that copes with the word already being in the shared deck, which is
+ * half the point of the screen: "trainers" turns out to have been there as
+ * патике all along, and the card is used as it stands.
+ *
+ * Returns the card's id and whether this call is what put it there. `created`
+ * comes from the function rather than from a lookup in the deck this screen has
+ * loaded, because that deck may still be in flight — and getting it wrong
+ * inverts the one discovery the screen exists to make.
+ */
+async function quickAddWord(sr: string, en: string): Promise<QuickAddResult> {
+  const { data, error } = await supabase
+    .rpc(QUICK_ADD_FN, quickAddParams(sr, en))
+    // The function is `returns table (...)`, i.e. a set, so PostgREST answers
+    // with an array of one -- `.single()` is what tells supabase-js to unwrap it.
+    .single<QuickAddResult>();
+  if (error) throw error;
+  // The screen reports on the strength of this, so a response that is not the
+  // row is worth saying out loud rather than rendering as "undefined".
+  if (!data || typeof data.card_id !== 'string' || typeof data.created !== 'boolean') {
+    throw new Error('The server did not return the saved word. It may not have been added.');
   }
   return data;
 }
@@ -1613,6 +1644,7 @@ export const api = {
   deleteCard,
   getLibrary,
   markKnown,
+  quickAddWord,
   listDrillStats,
   recordDrillAttempts,
   listLetterCards,

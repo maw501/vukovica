@@ -35,6 +35,11 @@ export const CARD_DOMAINS = [
   'numbers-time',
   'everyday-objects',
   'phrases',
+  // Not a subject like the rest of them, but where the card came from: the
+  // two-box quick add has nobody to ask what a word is about, so it files them
+  // here (`QUICK_ADD_DOMAIN` in `lib/quickAdd.ts`). It is in the picker so that
+  // a card can be moved *out* of it once the long form has been filled in.
+  'my-words',
 ] as const;
 
 /** The parts of speech the picker offers. */
