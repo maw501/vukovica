@@ -142,6 +142,24 @@ export interface LetterStatRow {
 }
 
 /**
+ * A row of `public.read_stats` — the "Read it" drill's per-word tally.
+ *
+ * Keyed by the card rather than by the headword (unlike `LetterStatRow`): a
+ * word can be edited, and a tally keyed by text would be orphaned the moment a
+ * typo in `sr_cyr` was fixed. The counts are readings-aloud, not reviews —
+ * nothing in this row can make a word unavailable to practise, and nothing in
+ * it touches the spaced-repetition schedule in `user_cards`.
+ */
+export interface ReadStatRow {
+  user_id: string;
+  card_id: string;
+  easy: number | null;
+  hard: number | null;
+  streak: number | null;
+  last_seen: string | null;
+}
+
+/**
  * A row of `public.stories` — the graded reader's library.
  *
  * Mirrors `supabase/migrations/20260830140000_stories.sql`. Stories are seeded
