@@ -472,7 +472,7 @@ Against the production domain, in a browser:
 
 | Check | Expect |
 | --- | --- |
-| `/` | dashboard; **Alphabet** stage; rows for Letters, Grammar, Reader, Books, Deck, Requests |
+| `/` | dashboard; **Alphabet** stage; rows for Letters, Read it, Grammar, Reader, Books, Deck, Requests |
 | `/review` | a word card, with a speaker button |
 | `/letters` | the drill: a letter pair, a speaker button, "Show the answer", then "Not yet" / "Got it" |
 | `/read` | the theme picker: **My words** first, then the deck's themes, each "N words · M solid" |

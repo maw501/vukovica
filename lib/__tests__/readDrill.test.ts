@@ -54,7 +54,7 @@ function statRow(cardId: string, stat: Partial<ReadStatRow>): ReadStatRow {
     easy: 0,
     hard: 0,
     streak: 0,
-    last_seen: null,
+    last_seen: '2026-09-18T08:00:00Z',
     ...stat,
   };
 }
@@ -105,6 +105,11 @@ describe('statsByCard', () => {
 describe('statFor', () => {
   it('gives a never-read word a blank tally rather than undefined', () => {
     expect(statFor(wordCard('c1'), new Map())).toEqual(UNRATED_READ);
+  });
+
+  it('finds the word’s own tally by card id', () => {
+    const stats = tallies({ c1: { easy: 2, hard: 1, streak: 2 }, c2: { easy: 9, streak: 9 } });
+    expect(statFor(wordCard('c1'), stats)).toEqual({ easy: 2, hard: 1, streak: 2 });
   });
 });
 
@@ -336,6 +341,21 @@ describe('themeCards and themeLabel', () => {
     expect(themeLabel(MINE_THEME)).toBe('My words');
     expect(themeLabel('greetings-courtesy')).toBe('Greetings and manners');
   });
+
+  it('reads a domain the same way the picker does', () => {
+    // The picker keyed on a trimmed domain and the run matched the raw column,
+    // so a row stored as "family " was offered with a count and then opened an
+    // empty run. One rule, checked from both ends.
+    const padded = [wordCard('c1', 'family '), wordCard('c2', ' family')];
+    const themes = buildThemes({ cards: padded, stats: tallies({}) });
+    const family = themes.find((entry) => entry.domain === 'family');
+
+    expect(family?.total).toBe(2);
+    expect(themeCards({ theme: family!.domain, cards: padded }).map((card) => card.id)).toEqual([
+      'c1',
+      'c2',
+    ]);
+  });
 });
 
 describe('rateReadParams', () => {
@@ -373,15 +393,31 @@ function migrationParameterNames(): string[] {
 
 describe('the read_stats migration keeps its contract', () => {
   it('creates the table with the columns the drill tallies', () => {
-    expect(migration).toContain('create table public.read_stats');
-    for (const column of ['user_id', 'card_id', 'easy', 'hard', 'streak', 'last_seen']) {
-      expect(migration).toContain(column);
+    // Sliced to the `create table` statement itself, not searched over the
+    // whole file: every one of these words also appears in a policy, in the
+    // function body or in a comment, so a file-wide `toContain` would pass just
+    // as happily with a column missing from the table.
+    const start = migration.indexOf('create table public.read_stats');
+    expect(start).toBeGreaterThan(-1);
+    const table = migration.slice(start, migration.indexOf(');', start));
+
+    for (const column of [
+      /user_id\s+uuid not null/,
+      /card_id\s+uuid not null/,
+      /easy\s+int not null default 0/,
+      /hard\s+int not null default 0/,
+      /streak\s+int not null default 0/,
+      // Stricter than `letter_stats`, whose `last_seen` is nullable; `ReadStatRow`
+      // types it as always present on the strength of this.
+      /last_seen\s+timestamptz not null default now\(\)/,
+    ]) {
+      expect(table, String(column)).toMatch(column);
     }
-    expect(migration).toContain('primary key (user_id, card_id)');
-    expect(migration).toContain('references auth.users (id) on delete cascade');
+    expect(table).toContain('primary key (user_id, card_id)');
+    expect(table).toContain('references auth.users (id) on delete cascade');
     // The tally goes when the card does: nothing should be left pointing at a
     // word that is no longer in the deck.
-    expect(migration).toContain('references public.cards (id) on delete cascade');
+    expect(table).toContain('references public.cards (id) on delete cascade');
   });
 
   it('locks the table to its owner, and lets nobody delete a tally', () => {

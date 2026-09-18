@@ -30,8 +30,6 @@ import { domainLabel } from '@/lib/domains';
 import { shuffle, type Rng } from '@/lib/letters';
 import type { CardRow, ReadStatRow } from '@/lib/types';
 
-export type { Rng } from '@/lib/letters';
-
 /**
  * Read right this many times in a row and the word is solid: a count on the
  * theme picker, and the last band a run puts a word in.
@@ -58,7 +56,7 @@ export const READ_RUN_SIZE = 20;
 export const MINE_THEME = 'mine';
 
 /** What "My words" is called on screen. */
-export const MINE_LABEL = 'My words';
+const MINE_LABEL = 'My words';
 
 /** One word's tally, as everything below needs it. */
 export interface ReadStat {
@@ -182,7 +180,7 @@ export function buildRun({
     .sort(compareBucketKeys)
     .flatMap((key) => shuffle(buckets.get(key) ?? [], random));
 
-  return size >= 0 ? ordered.slice(0, size) : ordered;
+  return ordered.slice(0, size);
 }
 
 /** `"<group>:<streak>"` keys, both numbers ascending. */
@@ -193,7 +191,7 @@ function compareBucketKeys(a: string, b: string): number {
 }
 
 /** The words of a theme that this sitting has not reached yet. */
-export function remainingCards(
+function remainingCards(
   cards: readonly CardRow[],
   seen: ReadonlySet<string> = new Set(),
 ): CardRow[] {
@@ -274,7 +272,7 @@ export function buildThemes({
   for (const card of cards) {
     if (knownIds.has(card.id)) mine.push(card);
 
-    const domain = card.domain?.trim();
+    const domain = domainOf(card);
     if (!domain) continue;
     const bucket = byDomain.get(domain);
     if (bucket) bucket.push(card);
@@ -312,7 +310,20 @@ export function themeCards({
   knownIds?: ReadonlySet<string>;
 }): CardRow[] {
   if (theme === MINE_THEME) return cards.filter((card) => knownIds.has(card.id));
-  return cards.filter((card) => card.domain === theme);
+  const wanted = theme.trim();
+  return cards.filter((card) => domainOf(card) === wanted);
+}
+
+/**
+ * A card's domain as both the picker and the run read it.
+ *
+ * One rule rather than two: `buildThemes` used to trim and `themeCards` used to
+ * compare the raw column, so a row stored as `"family "` would have been offered
+ * as a theme with a count and then opened an empty run. `trimCardInput` makes
+ * that theoretical today, which is exactly when it is cheap to make impossible.
+ */
+function domainOf(card: CardRow): string {
+  return card.domain?.trim() ?? '';
 }
 
 /** A theme's name for the top of the drill. */

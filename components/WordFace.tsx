@@ -28,12 +28,9 @@ import type { CardRow } from '@/lib/types';
 export function WordFace({
   card,
   revealed,
-  /** What the front says while it is face down. */
-  hint = 'Read it out loud, then tap to check',
 }: {
   card: CardRow;
   revealed: boolean;
-  hint?: string;
 }) {
   const example = card.example_cyr?.trim() ?? '';
 
@@ -67,7 +64,7 @@ export function WordFace({
           ) : null}
         </View>
       ) : (
-        <Text style={styles.faceDown}>{hint}</Text>
+        <Text style={styles.faceDown}>Read it out loud, then tap to check</Text>
       )}
     </>
   );
