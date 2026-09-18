@@ -40,6 +40,7 @@ import { isKnown } from '@/lib/library';
 import {
   canQuickAdd,
   quickAddConfirmation,
+  quickAddErrorMessage,
   quickAddErrors,
   quickAddMatches,
 } from '@/lib/quickAdd';
@@ -113,33 +114,55 @@ export default function AddScreen() {
     // the boxes when it returns: the boxes are cleared on success, and typing
     // the next word during a slow round trip would otherwise confirm that one.
     mutationFn: async () => ({
-      cardId: await api.quickAddWord(sr, en),
+      result: await api.quickAddWord(sr, en),
       sent: quickAddConfirmation(headword, en.trim()),
     }),
-    onSuccess: ({ cardId, sent }) => {
-      // The card the RPC settled on. If the deck already held it, the word was
-      // in the app before this tap — which is worth saying, because it means the
-      // English on the card is the deck's, not what was just typed.
-      const existing = (cards.data ?? []).find((card) => card.id === cardId);
+    onSuccess: ({ result, sent }) => {
+      // `created` is the function's own answer, not a lookup in `cards.data` —
+      // that query may still be in flight, and a wrong guess here would say
+      // "Added" for a word that had been in the deck all along, which is the one
+      // discovery this screen exists to make.
+      //
+      // The deck's own wording is preferred when it is to hand, because the
+      // English on an existing card is the deck's, not what was just typed.
+      const existing = result.created
+        ? undefined
+        : (cards.data ?? []).find((card) => card.id === result.card_id);
       setConfirmed({
         word: existing ? quickAddConfirmation(existing.sr_cyr, existing.en) : sent,
-        existed: Boolean(existing),
+        existed: !result.created,
       });
+      markKnown.reset();
       refresh();
       startAgain();
     },
+    // The raw text — which names the function and its arguments — is worth
+    // having when something goes wrong, and worth having nowhere near the
+    // screen. `quickAddErrorMessage` is what Mark reads.
+    onError: (error) => console.warn('quick_add_word failed:', errorMessage(error, 'no message')),
   });
 
   const markKnown = useMutation({
-    mutationFn: (card: CardRow) => api.markKnown(card.id),
-    onSuccess: (_row, card) => {
-      setConfirmed({ word: quickAddConfirmation(card.sr_cyr, card.en), existed: false });
+    mutationFn: (match: { card: CardRow; known: boolean }) => api.markKnown(match.card.id),
+    onSuccess: (_row, { card, known }) => {
+      setConfirmed({
+        word: quickAddConfirmation(card.sr_cyr, card.en),
+        // A row wearing the "In my words" chip was there before the tap, so it
+        // gets the same sentence a word the deck already had gets.
+        existed: known,
+      });
+      add.reset();
       refresh();
       startAgain();
     },
+    onError: (error) => console.warn('mark_known failed:', errorMessage(error, 'no message')),
   });
 
   const submit = () => {
+    // The button is disabled while a write is in flight; Enter in the English
+    // box is not, and two quick presses on a slow connection would be two round
+    // trips and two confirmations.
+    if (busy) return;
     if (!canQuickAdd(sr, en)) {
       setShowErrors(true);
       return;
@@ -222,7 +245,7 @@ export default function AddScreen() {
 
         {failure ? (
           <Text style={styles.error} testID="add-error">
-            {errorMessage(failure, 'That could not be added.')}
+            {quickAddErrorMessage(failure)}
           </Text>
         ) : null}
 
@@ -247,7 +270,7 @@ export default function AddScreen() {
                 busy={busy}
                 onPress={() => {
                   setConfirmed(null);
-                  markKnown.mutate(card);
+                  markKnown.mutate({ card, known: knownIds.has(card.id) });
                 }}
               />
             ))}
