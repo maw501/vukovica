@@ -131,6 +131,8 @@ app/                 expo-router routes
   (app)/book/[id].tsx  reading view, a page at a time
   (app)/deck.tsx       browse / search / edit / add
   (app)/library.tsx    My words: known / still learning, searchable
+  (app)/read.tsx       "Read it": pick a theme to read in Cyrillic
+  (app)/read/run.tsx   the read drill (no scheduling; read_stats tallies)
   (app)/requests.tsx   the capture queue
   (app)/progress.tsx   streak record, XP, every ladder
   (app)/settings.tsx
@@ -146,6 +148,8 @@ lib/                 all the logic worth testing, tests in lib/__tests__/
   books.ts             page numbering, photo validation, object paths
   requests.ts          what counts as a request, and how a tap becomes one
   stages.ts            the progression layer: stage, mastery, goal ladders
+  readDrill.ts         the read drill: run order, themes, the rate_read wire
+  domains.ts           what a cards.domain is called on screen
   xp.ts                XP awards, levels, the ring's geometry
   streak.ts            streak from review timestamps
   reader.ts            story tokenising, sentence lookup
@@ -183,25 +187,27 @@ in migrations, the book and stories through `seed-user-content.mjs`, the audio
 through `generate-audio.mjs`, and the answers to the capture queue by Claude
 writing cards between sessions.
 
-**Database.** Fifteen tables. One is shared — `cards`, readable by any
+**Database.** Seventeen tables. One is shared — `cards`, readable by any
 authenticated user, holding both decks (`kind` is `word` or `letter`) — and two
 more are global seeded content with no owner: `grammar_topics` and
 `grammar_items`. The rest are owner-only, keyed on `auth.uid()`: `user_cards`
-(FSRS state), `review_logs` (append-only), `drill_stats`, `grammar_stats`,
-`settings`, `stories`, `books`, `book_pages`, `requests` and `xp_events`.
+(FSRS state), `review_logs` (append-only), `drill_stats`, `letter_stats` (the
+letters drill's tally), `read_stats` ("Read it"'s), `grammar_stats`, `settings`,
+`stories`, `books`, `book_pages`, `requests` and `xp_events`.
 
-Two of the fifteen — `chat_messages` and `ai_usage` — are left over from the
+Two of the seventeen — `chat_messages` and `ai_usage` — are left over from the
 tutor and are no longer read or written by anything. They are harmless, and
 dropping them is a migration nobody has needed yet.
 
 Every table carries explicit `GRANT`s; Supabase no longer adds them for you.
-Five RPCs keep a write that spans two rows — or that has to read the row it
+Six RPCs keep a write that spans two rows — or that has to read the row it
 writes — in one transaction: `submit_review` (card state and its log),
 `bump_drill_stats` and `bump_grammar_stats` (per-letter and per-topic counters),
-`rate_letter` (a letter's tally and the XP it earns) and `mark_known` ("I already
-know this", which parks a word as known and pays no XP at all). Every one is
-`security invoker` with `execute` granted to `authenticated` alone and `user_id`
-taken from `auth.uid()`, so a caller can only ever write its own rows.
+`rate_letter` (a letter's tally and the XP it earns), `rate_read` (the same for a
+word read aloud in "Read it", tallied in `read_stats`) and `mark_known` ("I
+already know this", which parks a word as known and pays no XP at all). Every one
+is `security invoker` with `execute` granted to `authenticated` alone and
+`user_id` taken from `auth.uid()`, so a caller can only ever write its own rows.
 
 XP is otherwise not transactional: `xp_events` is an append-only ledger written
 by a plain client insert under its own policy, and a lost point is not worth a
