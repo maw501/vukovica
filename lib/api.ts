@@ -902,23 +902,37 @@ async function rateRead(cardId: string, gotIt: boolean): Promise<ReadStatRow> {
 }
 
 /**
+ * Where `listThemes` gets its three lists.
+ *
+ * Injected rather than fetched outright because all three are lists the app
+ * already holds under their own React Query keys — `['cards']`, `['read-stats']`
+ * and `['library']`. The picker passes the cache-backed fetchers (see
+ * `app/(app)/read.tsx`), so opening it straight after the Deck screen or My
+ * words costs nothing; called bare, each read goes to the server as usual.
+ */
+interface ThemeSources {
+  listCards: () => Promise<CardRow[]>;
+  listReadStats: () => Promise<ReadStatRow[]>;
+  getLibrary: () => Promise<LibraryEntry[]>;
+}
+
+/**
  * The themes the picker offers: every domain the deck actually has, plus "My
  * words", each with how many words it holds and how many are solid.
  *
- * Three reads the app already makes, batched into one round trip and folded by
- * `buildThemes`, rather than a `group by` this schema has no view for. Each is
- * cached under its own key elsewhere, so the deck read here is the same one the
- * Deck screen makes and the library read the same one My words makes.
+ * Three reads folded by `buildThemes`, rather than a `group by` this schema has
+ * no view for. They run together, so the picker is one round trip however many
+ * themes there turn out to be.
  *
  * Known is `user_cards.state = 'review'` — `lib/library.ts`'s one rule, the
  * same one the dashboard's Words ladder counts by, so "My words" here can never
  * disagree with "My words" there.
  */
-async function listThemes(): Promise<Theme[]> {
+async function listThemes(sources: Partial<ThemeSources> = {}): Promise<Theme[]> {
   const [cards, stats, library] = await Promise.all([
-    listCards(),
-    listReadStats(),
-    getLibrary(),
+    (sources.listCards ?? listCards)(),
+    (sources.listReadStats ?? listReadStats)(),
+    (sources.getLibrary ?? getLibrary)(),
   ]);
 
   const knownIds = new Set(

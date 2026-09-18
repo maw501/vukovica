@@ -49,6 +49,18 @@ interface Rating {
   gotIt: boolean;
 }
 
+/**
+ * How long after an answer the next card refuses to be turned over.
+ *
+ * "Got it" and "Show" occupy the same place on the screen, one card apart, so a
+ * double tap would otherwise land the second tap on the next word's reveal —
+ * which here does not merely spoil the card, it *plays the clip*, saying the
+ * word out loud before it has been read. A quarter of a second sits above the
+ * gap between two taps of one accidental double, and below the gap between two
+ * answers anybody means.
+ */
+const ANSWER_SETTLE_MS = 250;
+
 export default function ReadRunScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -83,6 +95,11 @@ export default function ReadRunScreen() {
   const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set());
   /** Ratings that never reached the database, in the order they were given. */
   const [failures, setFailures] = useState<Rating[]>([]);
+  /** True for a beat after an answer, while the buttons refuse to be tapped. */
+  const [settling, setSettling] = useState(false);
+  // State for the greying-out, a ref for the refusal itself: two taps can land
+  // in one frame, and a state update is not visible to the second of them.
+  const settleUntil = useRef(0);
 
   const pool = useMemo(() => {
     if (mine) {
@@ -129,8 +146,13 @@ export default function ReadRunScreen() {
       // has just written to...
       void queryClient.invalidateQueries({ queryKey: ['xp'] });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      // ...and the picker's "N words · M solid" is counted from these tallies.
-      void queryClient.invalidateQueries({ queryKey: ['read-themes'] });
+      // The picker's "N words · M solid" is counted from these same tallies, but
+      // it is deliberately NOT refreshed here. `/read` is still mounted under
+      // this screen, so an invalidation would refetch it there and then — and
+      // that query reads the whole deck and the whole of My words, which is
+      // three requests and something like fifteen hundred rows between one card
+      // and the next. The counts are nobody's business until the run ends, and
+      // the effect below refreshes them once, there.
     },
     onError: (_error, variables) => {
       setFailures((current) => [...current, variables]);
@@ -143,6 +165,10 @@ export default function ReadRunScreen() {
   rateRef.current = rate;
 
   const answer = useCallback((card: CardRow, gotIt: boolean) => {
+    if (Date.now() < settleUntil.current) return;
+    settleUntil.current = Date.now() + ANSWER_SETTLE_MS;
+    setSettling(true);
+
     rateRef.current.mutate({ cardId: card.id, gotIt });
     setSeen((current) => new Set(current).add(card.id));
     setTally((current) => ({
@@ -152,6 +178,18 @@ export default function ReadRunScreen() {
     setPosition((current) => current + 1);
     setRevealed(false);
   }, []);
+
+  /** Turn the card over — unless an answer has only just been given. */
+  const reveal = useCallback(() => {
+    if (Date.now() < settleUntil.current) return;
+    setRevealed(true);
+  }, []);
+
+  useEffect(() => {
+    if (!settling) return;
+    const timer = setTimeout(() => setSettling(false), ANSWER_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [settling]);
 
   /**
    * Send every rating that has not landed yet, once more.
@@ -190,6 +228,19 @@ export default function ReadRunScreen() {
   }, [retryFailures, router]);
 
   /**
+   * Refresh the picker's counts once, when the run ends.
+   *
+   * This is what `rate_read`'s `onSuccess` deliberately does not do per rating:
+   * one refetch of a heavy query at a moment when nobody is waiting on the next
+   * card, instead of one between every two words.
+   */
+  const finished = run !== null && position >= run.length;
+  useEffect(() => {
+    if (!finished) return;
+    void queryClient.invalidateQueries({ queryKey: ['read-themes'] });
+  }, [finished, queryClient]);
+
+  /**
    * Play the word the moment it is turned over.
    *
    * The clip is the answer to "did I say that right?", which is the question the
@@ -213,7 +264,7 @@ export default function ReadRunScreen() {
         <Text style={styles.error} testID="read-run-error">
           {errorMessage(
             loadError ?? stats.error,
-            'Could not load these words. They are still there — this is only the reading of them.',
+            'Could not load these words. Nothing is lost — try again.',
           )}
         </Text>
         <Pressable
@@ -309,8 +360,8 @@ export default function ReadRunScreen() {
         <View style={styles.card}>
           <Pressable
             style={styles.cardTap}
-            onPress={() => setRevealed(true)}
-            disabled={revealed}
+            onPress={reveal}
+            disabled={revealed || settling}
             accessibilityRole="button"
             accessibilityLabel="Show what it says"
             testID="read-card"
@@ -328,17 +379,31 @@ export default function ReadRunScreen() {
         {revealed ? (
           <View style={styles.answers}>
             <Pressable
-              style={({ pressed }) => [styles.answerButton, styles.notYet, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.answerButton,
+                styles.notYet,
+                settling && styles.buttonSettling,
+                pressed && !settling && styles.pressed,
+              ]}
               onPress={() => answer(card, false)}
+              disabled={settling}
               accessibilityRole="button"
+              accessibilityState={{ disabled: settling }}
               testID="read-not-yet"
             >
               <Text style={[styles.answerLabel, { color: colors.accent }]}>Not yet</Text>
             </Pressable>
             <Pressable
-              style={({ pressed }) => [styles.answerButton, styles.gotIt, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.answerButton,
+                styles.gotIt,
+                settling && styles.buttonSettling,
+                pressed && !settling && styles.pressed,
+              ]}
               onPress={() => answer(card, true)}
+              disabled={settling}
               accessibilityRole="button"
+              accessibilityState={{ disabled: settling }}
               testID="read-got-it"
             >
               <Text style={[styles.answerLabel, { color: colors.primary }]}>Got it</Text>
@@ -346,9 +411,15 @@ export default function ReadRunScreen() {
           </View>
         ) : (
           <Pressable
-            style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-            onPress={() => setRevealed(true)}
+            style={({ pressed }) => [
+              styles.primaryButton,
+              settling && styles.buttonSettling,
+              pressed && !settling && styles.pressed,
+            ]}
+            onPress={reveal}
+            disabled={settling}
             accessibilityRole="button"
+            accessibilityState={{ disabled: settling }}
             testID="read-reveal"
           >
             <Text style={styles.primaryButtonText}>Show</Text>
@@ -385,17 +456,14 @@ function RunSummary({
   onKeepGoing: () => void;
   onDone: () => void;
 }) {
-  const total = tally.gotIt + tally.notYet;
-
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
       <View style={styles.content} testID="read-summary">
+        {/* A run with nothing in it is not reachable: an empty theme is caught
+            before the run is built, and every other run has at least one word
+            in it to answer. */}
         <Text style={styles.summaryTitle}>
-          {total === 0
-            ? 'Nothing in this run'
-            : tally.notYet === 0
-              ? 'Every one of them!'
-              : 'Run finished'}
+          {tally.notYet === 0 ? 'Every one of them!' : 'Run finished'}
         </Text>
         {/*
           The tally counts every answer given, saved or not — it is the record of
@@ -523,6 +591,8 @@ const styles = StyleSheet.create({
   bannerButton: { minHeight: touchTarget - 12, justifyContent: 'center', paddingHorizontal: spacing.sm },
   bannerButtonText: { color: colors.primary, fontSize: 15, fontWeight: '600' },
   pressed: { opacity: 0.8 },
+  // The beat after an answer: visibly not tappable, rather than silently inert.
+  buttonSettling: { opacity: 0.45 },
   error: { color: colors.danger, fontSize: 14, textAlign: 'center' },
   textButton: { minHeight: touchTarget, alignItems: 'center', justifyContent: 'center' },
   textButtonLabel: { color: colors.primary, fontSize: 16, fontWeight: '600' },

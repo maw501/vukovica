@@ -14,7 +14,7 @@
  * worth being able to *read*.
  */
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
@@ -32,7 +32,30 @@ import { MINE_THEME } from '@/lib/readDrill';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 
 export default function ReadScreen() {
-  const themes = useQuery({ queryKey: ['read-themes'], queryFn: () => api.listThemes() });
+  const queryClient = useQueryClient();
+  const router = useRouter();
+
+  /**
+   * The counts, over the three lists the app already caches.
+   *
+   * `fetchQuery` rather than three bare calls: each one answers from
+   * `['cards']`, `['read-stats']` or `['library']` while that entry is fresh and
+   * fills it when it is not, so arriving here from the Deck screen, from My
+   * words or from a run costs no round trip — and the run screen, which reads
+   * the same three keys, gets them warm in return.
+   */
+  const themes = useQuery({
+    queryKey: ['read-themes'],
+    queryFn: () =>
+      api.listThemes({
+        listCards: () =>
+          queryClient.fetchQuery({ queryKey: ['cards'], queryFn: () => api.listCards() }),
+        listReadStats: () =>
+          queryClient.fetchQuery({ queryKey: ['read-stats'], queryFn: () => api.listReadStats() }),
+        getLibrary: () =>
+          queryClient.fetchQuery({ queryKey: ['library'], queryFn: () => api.getLibrary() }),
+      }),
+  });
 
   const rows = themes.data ?? [];
 
@@ -72,7 +95,13 @@ export default function ReadScreen() {
             </Text>
           </View>
         ) : (
-          rows.map((theme) => <ThemeRow key={theme.domain} theme={theme} />)
+          rows.map((theme) => (
+            <ThemeRow
+              key={theme.domain}
+              theme={theme}
+              onPick={() => router.push(`/read/run?theme=${encodeURIComponent(theme.domain)}`)}
+            />
+          ))
         )}
       </View>
     </ScrollView>
@@ -86,14 +115,13 @@ export default function ReadScreen() {
  * "My words" is the one row that can be empty, and when it is it says what to do
  * about it rather than opening a run with nothing in it.
  */
-function ThemeRow({ theme }: { theme: Theme }) {
-  const router = useRouter();
+function ThemeRow({ theme, onPick }: { theme: Theme; onPick: () => void }) {
   const empty = theme.total === 0;
 
   return (
     <Pressable
       style={({ pressed }) => [styles.row, empty && styles.rowDisabled, pressed && !empty && styles.pressed]}
-      onPress={() => router.push(`/read/run?theme=${encodeURIComponent(theme.domain)}`)}
+      onPress={onPick}
       disabled={empty}
       accessibilityRole="button"
       accessibilityState={{ disabled: empty }}
