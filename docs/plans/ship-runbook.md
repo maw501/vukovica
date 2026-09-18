@@ -351,6 +351,14 @@ cd dist && npx vercel deploy --prod --yes --scope team_4Oq4DlPcf9mktzOfQlyvDFue 
 Always check the grep in step 3 before uploading. Env values baked into the
 wrong bundle is the only failure in here that is silent.
 
+**New screen? Regenerate the typed routes before trusting `npm run typecheck`.**
+`.expo/types/router.d.ts` is only rewritten by `expo start` (an `expo export`
+leaves it alone), and a checkout without that file typechecks every `href` as a
+plain string. So a branch that adds a route can pass `tsc` in a fresh worktree
+and fail it in the main checkout with `"/add" is not assignable`. Fix: run
+`CI=1 npx expo start --web --port 8090` for half a minute, stop it, re-run
+`npm run typecheck`. `.expo/` is git-ignored, nothing to commit.
+
 ---
 
 ## Phase 3 deploy checklist
