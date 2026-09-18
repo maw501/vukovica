@@ -42,6 +42,20 @@ export interface QuickAddParams {
 }
 
 /**
+ * What the function hands back: the card, and whether this call is what put it
+ * in the deck.
+ *
+ * `created` is the function's own answer rather than something the screen works
+ * out by looking the id up in the deck it has loaded — that deck may still be in
+ * flight, and getting it wrong inverts the one discovery the screen exists to
+ * make ("trainers has been in there as патике all along").
+ */
+export interface QuickAddResult {
+  card_id: string;
+  created: boolean;
+}
+
+/**
  * One quick add as the function's arguments.
  *
  * The Serbian goes through `toCyrillicHeadword`, so "kašika" is sent as
@@ -60,17 +74,32 @@ export function quickAddParams(sr: string, en: string): QuickAddParams {
 /** Which of the two boxes is wrong, and what to say under it. */
 export type QuickAddField = 'sr' | 'en';
 
-const CYRILLIC = /\p{Script=Cyrillic}/u;
+const CYRILLIC_LETTER = /\p{Script=Cyrillic}/u;
+const LATIN_LETTER = /\p{Script=Latin}/u;
+
+/**
+ * What a headword may be made of: Cyrillic letters, spaces, and the four marks
+ * and the apostrophe and hyphen the seeded deck's own headwords use
+ * (`lib/__tests__/seed-deck.test.ts` holds the same list).
+ *
+ * Whole-string, not "contains one": `toCyrillicHeadword` leaves a string that
+ * already has any Cyrillic in it *unconverted*, so one slipped keyboard switch
+ * halfway through a word gives "кasika" — which passed the old containment test
+ * on both sides of the wire and would have gone into the shared deck under a
+ * unique `sr_cyr`, where `cyrToLat`, search and the audio batch all assume the
+ * headword is pure. `quick_add_word` makes the same check in SQL.
+ */
+const CYRILLIC_HEADWORD = /^[\p{Script=Cyrillic}\s.,!?'-]+$/u;
 
 /**
  * Per-box problems, keyed by box. An empty object means the word is ready to
  * add. The messages are shown verbatim under the inputs.
  *
- * The Cyrillic check is made *after* the conversion, exactly as the function
+ * The script check is made *after* the conversion, exactly as the function
  * checks what it was sent: "kasika" is fine, because it arrives as "касика";
- * "123" is not, because nothing in it converts to a letter. Saying so here saves
- * a round trip and puts the message under the box it belongs to, but it is not
- * the only guard — `quick_add_word` makes the same three checks itself.
+ * "кasika" is not, because half of it never converted; "123" is not, because
+ * nothing in it is a letter. Saying so here saves a round trip and puts the
+ * message under the box it belongs to, but it is not the only guard.
  */
 export function quickAddErrors(sr: string, en: string): Partial<Record<QuickAddField, string>> {
   const errors: Partial<Record<QuickAddField, string>> = {};
@@ -78,7 +107,11 @@ export function quickAddErrors(sr: string, en: string): Partial<Record<QuickAddF
 
   if (headword === '') {
     errors.sr = 'Type the Serbian word.';
-  } else if (!CYRILLIC.test(headword)) {
+  } else if (LATIN_LETTER.test(headword)) {
+    // Said as the mistake it is — a word half-typed on the other keyboard —
+    // rather than as "must be Cyrillic", which is advice he already took.
+    errors.sr = 'Type the whole word in one script — Cyrillic or Latin.';
+  } else if (!CYRILLIC_HEADWORD.test(headword) || !CYRILLIC_LETTER.test(headword)) {
     errors.sr = 'Use Cyrillic or Latin letters.';
   }
 
@@ -103,6 +136,43 @@ export function canQuickAdd(sr: string, en: string): boolean {
  */
 export function quickAddConfirmation(srCyr: string, en: string): string {
   return `${srCyr} — ${en}`;
+}
+
+// ---------------------------------------------------------------------------
+// When the database says no
+// ---------------------------------------------------------------------------
+
+/** What the screen says when it has nothing better to say. */
+export const QUICK_ADD_FAILED = 'Couldn’t save that word. Try again.';
+
+/**
+ * A failed `quick_add_word` as a sentence Mark can act on.
+ *
+ * `errorMessage` passes a `PostgrestError.message` through verbatim, which is
+ * the right default everywhere else in the app and quite wrong here: the
+ * function's own raises name it and its arguments, so a mistyped word would put
+ * `quick_add_word: p_sr_cyr must be a word` on screen — worse than the
+ * linguistic jargon the house rules ban, because it is not even English.
+ *
+ * Matched on the text rather than on `errcode`, because all four of the
+ * function's raises share `22023`. The raw message is still worth keeping; the
+ * caller logs it to the console.
+ */
+export function quickAddErrorMessage(error: unknown): string {
+  const raw =
+    typeof error === 'object' && error !== null && 'message' in error
+      ? String((error as { message: unknown }).message)
+      : '';
+
+  if (raw.includes('not as a word')) return 'That’s a letter, not a word.';
+  if (raw.includes('not written in Cyrillic') || raw.includes('p_sr_cyr')) {
+    return 'Type the word in Serbian first.';
+  }
+  if (raw.includes('p_en')) return 'Type what it means in English.';
+  if (raw.includes('requires an authenticated user')) {
+    return 'You are signed out. Sign in and try again.';
+  }
+  return QUICK_ADD_FAILED;
 }
 
 // ---------------------------------------------------------------------------

@@ -50,7 +50,12 @@ create function public.quick_add_word(
   p_sr_cyr text,
   p_en text
 )
-returns uuid
+-- The card, and whether this call is what put it there. The screen says one of
+-- two different things afterwards -- "Added to My words" or "Already in the
+-- deck, now in My words" -- and that is the whole point of the second column:
+-- the client could only otherwise guess, by looking the id up in a copy of the
+-- deck that may still be loading.
+returns table (card_id uuid, created boolean)
 language plpgsql
 security invoker
 set search_path = public, pg_temp
@@ -60,6 +65,7 @@ declare
   v_sr_cyr  text := btrim(coalesce(p_sr_cyr, ''));
   v_en      text := btrim(coalesce(p_en, ''));
   v_card_id uuid;
+  v_created boolean := false;
 begin
   -- RLS would refuse the write anyway; failing here says why.
   if v_user_id is null then
@@ -81,9 +87,16 @@ begin
   -- the serif, search derives the Latin form from it with `cyrToLat`, and the
   -- reader looks words up by it. The client converts a Latin headword before it
   -- sends it (`toCyrillicHeadword`), so a Latin one arriving here means that
-  -- step was skipped, not that the user typed Latin. `Ѐ-ӿ` is the
-  -- Cyrillic block, which every letter Serbian uses lives in.
-  if v_sr_cyr !~ E'[\\u0400-\\u04FF]' then
+  -- step was skipped, not that the user typed Latin.
+  --
+  -- Every letter, not merely one of them. `toCyrillicHeadword` leaves a string
+  -- that already contains any Cyrillic *unconverted*, so one slipped keyboard
+  -- switch halfway through a word gives "кasika" -- and `sr_cyr` is unique in a
+  -- deck the app assumes is pure Cyrillic, with no way to correct it from this
+  -- screen. `Ѐ-ӿ` is the Cyrillic block; the rest of the class is the space and
+  -- the punctuation the seeded deck's own headwords already use.
+  if v_sr_cyr !~ E'^[\\u0400-\\u04FF .,!?''-]+$'
+     or v_sr_cyr !~ E'[\\u0400-\\u04FF]' then
     raise exception 'quick_add_word: “%” is not written in Cyrillic', v_sr_cyr
       using errcode = '22023';
   end if;
@@ -120,6 +133,8 @@ begin
     on conflict (sr_cyr) do nothing
     returning cards.id into v_card_id;
 
+    v_created := v_card_id is not null;
+
     if v_card_id is null then
       select cards.id into v_card_id
       from public.cards
@@ -138,7 +153,7 @@ begin
 
   perform public.mark_known(v_card_id);
 
-  return v_card_id;
+  return query select v_card_id, v_created;
 end;
 $$;
 

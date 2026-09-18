@@ -8,10 +8,12 @@ import { CARD_DOMAINS } from '@/lib/cardInput';
 import {
   canQuickAdd,
   quickAddConfirmation,
+  quickAddErrorMessage,
   quickAddErrors,
   quickAddMatches,
   quickAddParams,
   QUICK_ADD_DOMAIN,
+  QUICK_ADD_FAILED,
   QUICK_ADD_FN,
 } from '@/lib/quickAdd';
 
@@ -75,9 +77,79 @@ describe('quickAddErrors', () => {
     expect(quickAddErrors('123', 'spoon').sr).toBe('Use Cyrillic or Latin letters.');
   });
 
+  it('refuses a word half-typed on the other keyboard', () => {
+    // The trap this guard exists for: `toCyrillicHeadword` leaves a string that
+    // already contains Cyrillic *unconverted*, so "кasika" -- one slipped
+    // keyboard switch -- would have gone into a shared, unique-keyed deck that
+    // `cyrToLat`, search and the audio batch all assume is pure Cyrillic.
+    const mixed = 'Type the whole word in one script — Cyrillic or Latin.';
+    expect(quickAddErrors('кasika', 'spoon').sr).toBe(mixed);
+    expect(quickAddErrors('kašikа', 'spoon').sr).toBe(mixed);
+    expect(quickAddErrors('патикe', 'trainers').sr).toBe(mixed);
+    expect(canQuickAdd('кasika', 'spoon')).toBe(false);
+  });
+
+  it('refuses a digit smuggled into an otherwise Cyrillic word', () => {
+    expect(quickAddErrors('кашика2', 'spoon').sr).toBe('Use Cyrillic or Latin letters.');
+  });
+
+  it('allows the punctuation the seeded deck’s own headwords use', () => {
+    // Space, full stop, comma, the two marks, apostrophe and hyphen -- the same
+    // class `seed-deck.test.ts` holds every headword to.
+    expect(quickAddErrors('добар дан', 'good day')).toEqual({});
+    expect(quickAddErrors('срп-ски', 'serbian-ish')).toEqual({});
+    expect(quickAddErrors('здраво!', 'hello')).toEqual({});
+  });
+
   it('reports both boxes at once rather than one at a time', () => {
     expect(Object.keys(quickAddErrors('', ''))).toEqual(['sr', 'en']);
     expect(canQuickAdd('', '')).toBe(false);
+  });
+});
+
+describe('quickAddErrorMessage', () => {
+  it('never lets the function’s own raises reach the screen', () => {
+    // `errorMessage` passes `PostgrestError.message` through verbatim, which is
+    // right everywhere else and quite wrong here: these messages name the
+    // function and its arguments.
+    const raises = [
+      'quick_add_word: p_sr_cyr must be a word',
+      'quick_add_word: p_en must be what it means',
+      'quick_add_word: “kasika” is not written in Cyrillic',
+      'quick_add_word: “Б б” is already in the deck, but not as a word',
+      'quick_add_word requires an authenticated user',
+    ];
+    for (const message of raises) {
+      const shown = quickAddErrorMessage({ message });
+      expect(shown).not.toContain('quick_add_word');
+      expect(shown).not.toContain('p_sr_cyr');
+      expect(shown).not.toContain('p_en');
+    }
+  });
+
+  it('says what went wrong in words Mark can act on', () => {
+    expect(
+      quickAddErrorMessage({ message: 'quick_add_word: “Б б” is already in the deck, but not as a word' }),
+    ).toBe('That’s a letter, not a word.');
+    expect(
+      quickAddErrorMessage({ message: 'quick_add_word: “kasika” is not written in Cyrillic' }),
+    ).toBe('Type the word in Serbian first.');
+    expect(quickAddErrorMessage({ message: 'quick_add_word: p_sr_cyr must be a word' })).toBe(
+      'Type the word in Serbian first.',
+    );
+    expect(quickAddErrorMessage({ message: 'quick_add_word: p_en must be what it means' })).toBe(
+      'Type what it means in English.',
+    );
+    expect(
+      quickAddErrorMessage({ message: 'quick_add_word requires an authenticated user' }),
+    ).toBe('You are signed out. Sign in and try again.');
+  });
+
+  it('falls back rather than repeating a message it does not recognise', () => {
+    expect(quickAddErrorMessage({ message: 'TypeError: Failed to fetch' })).toBe(QUICK_ADD_FAILED);
+    expect(quickAddErrorMessage(new Error('duplicate key value'))).toBe(QUICK_ADD_FAILED);
+    expect(quickAddErrorMessage(null)).toBe(QUICK_ADD_FAILED);
+    expect(quickAddErrorMessage(undefined)).toBe(QUICK_ADD_FAILED);
   });
 });
 
@@ -170,7 +242,7 @@ function functionHeader(): string {
 /** The `p_*` argument names the migration declares, in declaration order. */
 function migrationParameterNames(): string[] {
   const header = functionHeader();
-  const signature = header.slice(0, header.indexOf('returns uuid'));
+  const signature = header.slice(0, header.indexOf('returns table'));
   return [...signature.matchAll(/^\s*(p_[a-z_]+)\s+/gm)].map((match) => match[1]);
 }
 
@@ -228,8 +300,24 @@ describe('the quick_add migration keeps its contract', () => {
     // The deck is shared and `sr_cyr` is unique: half the point of this screen
     // is finding that "trainers" has been in the deck as патике all along, and
     // a two-box form is not the place to overwrite somebody's example sentence.
+    // `do update` as well as `update public.cards`, because the realistic
+    // regression is `on conflict (sr_cyr) do update set en = v_en`, in which the
+    // table is never named.
     expect(migration).not.toMatch(/update\s+public\.cards/);
+    expect(migration).not.toMatch(/do\s+update/);
     expect(migration).toMatch(/on conflict \(sr_cyr\) do nothing/);
+  });
+
+  it('answers whether it inserted, rather than leaving the client to guess', () => {
+    expect(functionHeader()).toMatch(/returns table \(card_id uuid, created boolean\)/);
+    expect(migration).toMatch(/return query select v_card_id, v_created;/);
+  });
+
+  it('demands a headword that is Cyrillic all through, not one that merely has some', () => {
+    // A containment test passes "кasika", which is a permanent, unique row in a
+    // deck that assumes its headwords are pure. The anchors are the fix.
+    expect(migration).toMatch(/!~ E'\^\[/);
+    expect(migration).toMatch(/\$'/);
   });
 
   it('refuses a blank box and a headword with no Cyrillic in it', () => {

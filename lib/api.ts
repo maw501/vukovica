@@ -25,7 +25,7 @@ import { BUMP_GRAMMAR_STATS_FN, bumpGrammarStatsParams } from '@/lib/grammar';
 import { RATE_LETTER_FN, rateLetterParams } from '@/lib/letters';
 import { MARK_KNOWN_FN, markKnownParams, type LibraryEntry } from '@/lib/library';
 import { buildQueue } from '@/lib/queue';
-import { QUICK_ADD_FN, quickAddParams } from '@/lib/quickAdd';
+import { QUICK_ADD_FN, quickAddParams, type QuickAddResult } from '@/lib/quickAdd';
 import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
 import { computeProgress, type Progress } from '@/lib/stages';
 import {
@@ -728,17 +728,21 @@ async function markKnown(cardId: string): Promise<UserCardRow> {
  * half the point of the screen: "trainers" turns out to have been there as
  * патике all along, and the card is used as it stands.
  *
- * Returns the card's id, whether it was inserted or found. The screen compares
- * it against the deck it has already loaded to decide which of the two things to
- * say.
+ * Returns the card's id and whether this call is what put it there. `created`
+ * comes from the function rather than from a lookup in the deck this screen has
+ * loaded, because that deck may still be in flight — and getting it wrong
+ * inverts the one discovery the screen exists to make.
  */
-async function quickAddWord(sr: string, en: string): Promise<string> {
-  const { data, error } = await supabase.rpc(QUICK_ADD_FN, quickAddParams(sr, en));
+async function quickAddWord(sr: string, en: string): Promise<QuickAddResult> {
+  const { data, error } = await supabase
+    .rpc(QUICK_ADD_FN, quickAddParams(sr, en))
+    // The function is `returns table (...)`, i.e. a set, so PostgREST answers
+    // with an array of one -- `.single()` is what tells supabase-js to unwrap it.
+    .single<QuickAddResult>();
   if (error) throw error;
-  // The function returns a bare `uuid`, so PostgREST answers with the scalar.
-  // The screen navigates and reports on the strength of it, so a response that
-  // is not one is worth saying out loud rather than rendering as "undefined".
-  if (typeof data !== 'string') {
+  // The screen reports on the strength of this, so a response that is not the
+  // row is worth saying out loud rather than rendering as "undefined".
+  if (!data || typeof data.card_id !== 'string' || typeof data.created !== 'boolean') {
     throw new Error('The server did not return the saved word. It may not have been added.');
   }
   return data;
