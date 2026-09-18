@@ -16,9 +16,9 @@
  * and stay there — this is the shelf, not the workshop.
  */
 
-import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -27,34 +27,40 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
+} from "react-native";
 
-import { ScriptText } from '@/components/ScriptText';
-import { SpeakButton } from '@/components/SpeakButton';
-import { api, type LibraryEntry } from '@/lib/api';
-import { errorMessage } from '@/lib/errors';
+import { ScriptText } from "@/components/ScriptText";
+import { SpeakButton } from "@/components/SpeakButton";
+import { api, type LibraryEntry } from "@/lib/api";
+import { errorMessage } from "@/lib/errors";
 import {
   learnedLabel,
   libraryHeadline,
   sortLibrary,
   splitLibrary,
   type LibrarySort,
-} from '@/lib/library';
-import { filterCards } from '@/lib/search';
-import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
-import { cyrToLat } from '@/lib/transliterate';
+} from "@/lib/library";
+import { filterCards } from "@/lib/search";
+import {
+  colors,
+  contentMaxWidth,
+  radius,
+  spacing,
+  touchTarget,
+} from "@/lib/theme";
+import { cyrToLat } from "@/lib/transliterate";
 
 /** Which section is on screen. */
-type Section = 'known' | 'learning';
+type Section = "known" | "learning";
 
 const SECTIONS: { key: Section; label: string }[] = [
-  { key: 'known', label: 'Known' },
-  { key: 'learning', label: 'Still learning' },
+  { key: "known", label: "Known" },
+  { key: "learning", label: "Still learning" },
 ];
 
 const SORTS: { key: LibrarySort; label: string }[] = [
-  { key: 'recent', label: 'Newest' },
-  { key: 'alpha', label: 'A–Z' },
+  { key: "recent", label: "Newest" },
+  { key: "alpha", label: "A–Z" },
 ];
 
 /**
@@ -69,14 +75,20 @@ type SearchableEntry = LibraryEntry & { sr_cyr: string; en: string };
 export default function LibraryScreen() {
   const router = useRouter();
 
-  const library = useQuery({ queryKey: ['library'], queryFn: () => api.getLibrary() });
-  const settings = useQuery({ queryKey: ['settings'], queryFn: () => api.getSettings() });
+  const library = useQuery({
+    queryKey: ["library"],
+    queryFn: () => api.getLibrary(),
+  });
+  const settings = useQuery({
+    queryKey: ["settings"],
+    queryFn: () => api.getSettings(),
+  });
   const showLatin = settings.data?.show_latin ?? true;
   const ttsEnabled = settings.data?.tts_enabled ?? true;
 
-  const [section, setSection] = useState<Section>('known');
-  const [sort, setSort] = useState<LibrarySort>('recent');
-  const [query, setQuery] = useState('');
+  const [section, setSection] = useState<Section>("known");
+  const [sort, setSort] = useState<LibrarySort>("recent");
+  const [query, setQuery] = useState("");
   /** The one row expanded to show its example sentence, if any. */
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -84,15 +96,20 @@ export default function LibraryScreen() {
   // Partitioned once: the two counts are the two lengths, so there is no reason
   // to walk the list a second time to find out what it has just been split by.
   const sections = useMemo(() => splitLibrary(entries), [entries]);
-  const counts = { known: sections.known.length, learning: sections.learning.length };
+  const counts = {
+    known: sections.known.length,
+    learning: sections.learning.length,
+  };
 
   const rows = useMemo(() => {
-    const chosen = section === 'known' ? sections.known : sections.learning;
-    const searchable: SearchableEntry[] = sortLibrary(chosen, sort).map((entry) => ({
-      ...entry,
-      sr_cyr: entry.card.sr_cyr,
-      en: entry.card.en,
-    }));
+    const chosen = section === "known" ? sections.known : sections.learning;
+    const searchable: SearchableEntry[] = sortLibrary(chosen, sort).map(
+      (entry) => ({
+        ...entry,
+        sr_cyr: entry.card.sr_cyr,
+        en: entry.card.en,
+      }),
+    );
     return filterCards(searchable, query);
   }, [query, section, sections, sort]);
 
@@ -108,9 +125,12 @@ export default function LibraryScreen() {
     return (
       <View style={styles.centred}>
         <Text style={styles.error} testID="library-error">
-          {errorMessage(library.error, 'Could not load your words.')}
+          {errorMessage(library.error, "Could not load your words.")}
         </Text>
-        <Pressable style={styles.textButton} onPress={() => void library.refetch()}>
+        <Pressable
+          style={styles.textButton}
+          onPress={() => void library.refetch()}
+        >
           <Text style={styles.textButtonLabel}>Try again</Text>
         </Pressable>
       </View>
@@ -124,12 +144,15 @@ export default function LibraryScreen() {
       <View style={styles.centred} testID="library-empty">
         <Text style={styles.emptyTitle}>No words yet</Text>
         <Text style={styles.muted}>
-          Words you review land here as you learn them — and a word you already know can
-          go straight in.
+          Words you review land here as you learn them — and a word you already
+          know can go straight in.
         </Text>
         <Pressable
-          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-          onPress={() => router.push('/add')}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            pressed && styles.pressed,
+          ]}
+          onPress={() => router.push("/add")}
           accessibilityRole="button"
           testID="library-add-empty"
         >
@@ -137,7 +160,7 @@ export default function LibraryScreen() {
         </Pressable>
         <Pressable
           style={styles.textButton}
-          onPress={() => router.push('/review')}
+          onPress={() => router.push("/review")}
           accessibilityRole="button"
           testID="library-review-link"
         >
@@ -150,22 +173,38 @@ export default function LibraryScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <View style={styles.headlineRow}>
+        <View style={styles.headerRow}>
           <Text style={styles.headline} testID="library-headline">
             {libraryHeadline(counts.known, counts.learning)}
           </Text>
-          {/* The shelf is also where a word gets put on it. Mark learns most of
-              his vocabulary from his wife rather than from the deck, so the way
-              to record one belongs on the screen that lists them. */}
-          <Pressable
-            style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
-            onPress={() => router.push('/add')}
-            accessibilityRole="button"
-            accessibilityLabel="Add a word"
-            testID="library-add"
-          >
-            <Text style={styles.addButtonText}>+ Add a word</Text>
-          </Pressable>
+          <View style={styles.headerActions}>
+            {/* The other thing to do with a word you know: read it off the page.
+                Straight into the drill over these very words rather than to the
+                theme picker — this screen *is* the theme. */}
+            <Pressable
+              style={styles.readLink}
+              onPress={() => router.push("/read/run?theme=mine")}
+              accessibilityRole="button"
+              testID="library-read-link"
+            >
+              <Text style={styles.readLinkText}>Read it</Text>
+            </Pressable>
+            {/* The shelf is also where a word gets put on it. Mark learns most of
+                his vocabulary from his wife rather than from the deck, so the way
+                to record one belongs on the screen that lists them. */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.addButton,
+                pressed && styles.pressed,
+              ]}
+              onPress={() => router.push("/add")}
+              accessibilityRole="button"
+              accessibilityLabel="Add a word"
+              testID="library-add"
+            >
+              <Text style={styles.addButtonText}>+ Add a word</Text>
+            </Pressable>
+          </View>
         </View>
 
         <View style={styles.tabs}>
@@ -181,11 +220,16 @@ export default function LibraryScreen() {
               accessibilityState={{ selected: section === key }}
               testID={`library-tab-${key}`}
             >
-              <Text style={[styles.tabLabel, section === key && styles.tabLabelActive]}>
+              <Text
+                style={[
+                  styles.tabLabel,
+                  section === key && styles.tabLabelActive,
+                ]}
+              >
                 {label}
-                {'  '}
+                {"  "}
                 <Text style={styles.tabCount}>
-                  {key === 'known' ? counts.known : counts.learning}
+                  {key === "known" ? counts.known : counts.learning}
                 </Text>
               </Text>
             </Pressable>
@@ -214,7 +258,12 @@ export default function LibraryScreen() {
               accessibilityState={{ selected: sort === key }}
               testID={`library-sort-${key}`}
             >
-              <Text style={[styles.chipLabel, sort === key && styles.chipLabelActive]}>
+              <Text
+                style={[
+                  styles.chipLabel,
+                  sort === key && styles.chipLabelActive,
+                ]}
+              >
                 {label}
               </Text>
             </Pressable>
@@ -231,9 +280,9 @@ export default function LibraryScreen() {
           <Text style={styles.muted} testID="library-no-match">
             {query
               ? `No words match “${query}”.`
-              : section === 'known'
-                ? 'Nothing here yet — words move here once you have got them right a few times.'
-                : 'Nothing part-learnt right now. Everything you have studied is under Known.'}
+              : section === "known"
+                ? "Nothing here yet — words move here once you have got them right a few times."
+                : "Nothing part-learnt right now. Everything you have studied is under Known."}
           </Text>
         }
         renderItem={({ item }) => (
@@ -242,7 +291,9 @@ export default function LibraryScreen() {
             showLatin={showLatin}
             ttsEnabled={ttsEnabled}
             open={openId === item.card.id}
-            onToggle={() => setOpenId(openId === item.card.id ? null : item.card.id)}
+            onToggle={() =>
+              setOpenId(openId === item.card.id ? null : item.card.id)
+            }
           />
         )}
       />
@@ -278,7 +329,7 @@ function LibraryRow({
   // says so by not being tappable rather than by opening onto a blank panel.
   const exampleCyr = card.example_cyr.trim();
   const exampleEn = card.example_en.trim();
-  const hasExample = exampleCyr !== '' || exampleEn !== '';
+  const hasExample = exampleCyr !== "" || exampleEn !== "";
 
   return (
     <View style={styles.row}>
@@ -301,7 +352,7 @@ function LibraryRow({
             {showLatin ? (
               <>
                 <ScriptText role="lat">{cyrToLat(card.sr_cyr)}</ScriptText>
-                {' · '}
+                {" · "}
               </>
             ) : null}
             <ScriptText role="en">{card.en}</ScriptText>
@@ -347,49 +398,65 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   centred: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     gap: spacing.sm,
     padding: spacing.lg,
   },
   header: {
-    width: '100%',
+    width: "100%",
     maxWidth: contentMaxWidth,
-    alignSelf: 'center',
+    alignSelf: "center",
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     gap: spacing.sm,
   },
-  headlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.sm,
   },
-  headline: { fontSize: 15, color: colors.text, fontWeight: '600', flexShrink: 1 },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  readLink: {
+    minHeight: touchTarget - 12,
+    justifyContent: "center",
+    paddingHorizontal: spacing.xs,
+  },
+  readLinkText: { color: colors.primary, fontSize: 16, fontWeight: "600" },
+  headline: {
+    fontSize: 15,
+    color: colors.text,
+    fontWeight: "600",
+    flexShrink: 1,
+  },
   addButton: {
     minHeight: touchTarget - 16,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
     backgroundColor: colors.primary,
   },
-  addButtonText: { color: colors.primaryOn, fontSize: 14, fontWeight: '600' },
-  tabs: { flexDirection: 'row', gap: spacing.sm },
+  addButtonText: { color: colors.primaryOn, fontSize: 14, fontWeight: "600" },
+  tabs: { flexDirection: "row", gap: spacing.sm },
   tab: {
     flex: 1,
     minHeight: touchTarget - 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
   tabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabLabel: { fontSize: 15, fontWeight: '600', color: colors.text },
+  tabLabel: { fontSize: 15, fontWeight: "600", color: colors.text },
   tabLabelActive: { color: colors.primaryOn },
-  tabCount: { fontWeight: '700' },
+  tabCount: { fontWeight: "700" },
   search: {
     minHeight: touchTarget,
     borderWidth: 1,
@@ -400,11 +467,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
   },
-  sortRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  sortRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   sortLabel: { fontSize: 13, color: colors.textMuted },
   chip: {
     minHeight: touchTarget - 16,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: spacing.md,
     borderRadius: radius.sm,
     borderWidth: 1,
@@ -413,15 +480,15 @@ const styles = StyleSheet.create({
   },
   chipActive: { borderColor: colors.primary, backgroundColor: colors.primary },
   chipLabel: { fontSize: 14, color: colors.text },
-  chipLabelActive: { color: colors.primaryOn, fontWeight: '600' },
+  chipLabelActive: { color: colors.primaryOn, fontWeight: "600" },
   listContent: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
     gap: spacing.sm,
-    width: '100%',
+    width: "100%",
     maxWidth: contentMaxWidth,
-    alignSelf: 'center',
+    alignSelf: "center",
   },
   row: {
     backgroundColor: colors.surface,
@@ -431,10 +498,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  rowTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  rowTap: { flex: 1, minHeight: touchTarget - 8, justifyContent: 'center', gap: 2 },
+  rowTop: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  rowTap: {
+    flex: 1,
+    minHeight: touchTarget - 8,
+    justifyContent: "center",
+    gap: 2,
+  },
   // Colour and face come from `script`; only size and weight live here.
-  rowCyr: { fontSize: 22, fontWeight: '600' },
+  rowCyr: { fontSize: 22, fontWeight: "600" },
   rowSub: { fontSize: 13, color: colors.textMuted },
   rowMeta: { fontSize: 12, color: colors.textMuted },
   expanded: {
@@ -446,21 +518,29 @@ const styles = StyleSheet.create({
   },
   exampleCyr: { fontSize: 17 },
   exampleLat: { fontSize: 13 },
-  exampleEn: { fontSize: 13, fontStyle: 'italic' },
-  emptyTitle: { fontSize: 24, fontWeight: '700', color: colors.text },
-  muted: { color: colors.textMuted, fontSize: 14, textAlign: 'center' },
+  exampleEn: { fontSize: 13, fontStyle: "italic" },
+  emptyTitle: { fontSize: 24, fontWeight: "700", color: colors.text },
+  muted: { color: colors.textMuted, fontSize: 14, textAlign: "center" },
   primaryButton: {
     minHeight: touchTarget,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: radius.md,
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.lg,
     marginTop: spacing.sm,
   },
-  primaryButtonText: { color: colors.primaryOn, fontSize: 17, fontWeight: '600' },
-  error: { color: colors.danger, fontSize: 14, textAlign: 'center' },
-  textButton: { minHeight: touchTarget, alignItems: 'center', justifyContent: 'center' },
-  textButtonLabel: { color: colors.primary, fontSize: 16, fontWeight: '600' },
+  primaryButtonText: {
+    color: colors.primaryOn,
+    fontSize: 17,
+    fontWeight: "600",
+  },
+  error: { color: colors.danger, fontSize: 14, textAlign: "center" },
+  textButton: {
+    minHeight: touchTarget,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  textButtonLabel: { color: colors.primary, fontSize: 16, fontWeight: "600" },
   pressed: { opacity: 0.8 },
 });

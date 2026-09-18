@@ -50,6 +50,10 @@ export default function AppLayout() {
         <Stack.Screen name="deck" options={{ title: 'Deck' }} />
         <Stack.Screen name="add" options={{ title: 'Add a word' }} />
         <Stack.Screen name="library" options={{ title: 'My words' }} />
+        <Stack.Screen name="read" options={{ title: 'Read it' }} />
+        {/* The theme is named on the screen itself, under the progress
+            line, so the header stays the name of the drill. */}
+        <Stack.Screen name="read/run" options={{ title: 'Read it' }} />
         <Stack.Screen name="trainer" options={{ title: 'Cyrillic trainer' }} />
         <Stack.Screen name="reader" options={{ title: 'Reader' }} />
         <Stack.Screen name="books" options={{ title: 'Books' }} />

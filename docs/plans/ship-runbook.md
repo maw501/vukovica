@@ -480,9 +480,11 @@ Against the production domain, in a browser:
 
 | Check | Expect |
 | --- | --- |
-| `/` | dashboard; **Alphabet** stage; rows for Letters, Grammar, Reader, Books, Deck, Requests |
+| `/` | dashboard; **Alphabet** stage; rows for Letters, Read it, Grammar, Reader, Books, Deck, Requests |
 | `/review` | a word card, with a speaker button |
 | `/letters` | the drill: a letter pair, a speaker button, "Show the answer", then "Not yet" / "Got it" |
+| `/read` | the theme picker: **My words** first, then the deck's themes, each "N words · M solid" |
+| `/read/run?theme=family` | a word in **Cyrillic only** — no Latin, no English — then "Show" reveals both, plays the clip, and "Not yet" / "Got it" moves on |
 | `/alphabet` | thirty rows in azbuka order; tap one to hear it |
 | `/review?deck=letters` | redirects to `/letters` (the old link, kept working) |
 | `/trainer` | a drill |

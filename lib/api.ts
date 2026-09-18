@@ -13,21 +13,37 @@ import {
   pageCountError,
   photoContentType,
   photoObjectPath,
-} from '@/lib/books';
-import { trimCardInput, type CardInput } from '@/lib/cardInput';
+} from "@/lib/books";
+import { trimCardInput, type CardInput } from "@/lib/cardInput";
 import {
   BUMP_DRILL_STATS_FN,
   bumpDrillStatsParams,
   type LetterDelta,
-} from '@/lib/drills';
-import { gradeCard, newUserCard, type ReviewGrade } from '@/lib/fsrs';
-import { BUMP_GRAMMAR_STATS_FN, bumpGrammarStatsParams } from '@/lib/grammar';
-import { RATE_LETTER_FN, rateLetterParams } from '@/lib/letters';
-import { MARK_KNOWN_FN, markKnownParams, type LibraryEntry } from '@/lib/library';
-import { buildQueue } from '@/lib/queue';
-import { QUICK_ADD_FN, quickAddParams, type QuickAddResult } from '@/lib/quickAdd';
-import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
-import { computeProgress, type Progress } from '@/lib/stages';
+} from "@/lib/drills";
+import { gradeCard, newUserCard, type ReviewGrade } from "@/lib/fsrs";
+import { BUMP_GRAMMAR_STATS_FN, bumpGrammarStatsParams } from "@/lib/grammar";
+import { RATE_LETTER_FN, rateLetterParams } from "@/lib/letters";
+import {
+  MARK_KNOWN_FN,
+  isKnown,
+  markKnownParams,
+  type LibraryEntry,
+} from "@/lib/library";
+import { buildQueue } from "@/lib/queue";
+import {
+  QUICK_ADD_FN,
+  quickAddParams,
+  type QuickAddResult,
+} from "@/lib/quickAdd";
+import {
+  RATE_READ_FN,
+  buildThemes,
+  rateReadParams,
+  statsByCard,
+  type Theme,
+} from "@/lib/readDrill";
+import { SUBMIT_REVIEW_FN, submitReviewParams } from "@/lib/reviewRpc";
+import { computeProgress, type Progress } from "@/lib/stages";
 import {
   computeStreak,
   longestStreakFromLocalDays,
@@ -37,8 +53,8 @@ import {
   streakFromPages,
   studyDaysFromPages,
   type StudyDayPageFetcher,
-} from '@/lib/streak';
-import { supabase } from '@/lib/supabase';
+} from "@/lib/streak";
+import { supabase } from "@/lib/supabase";
 import type {
   BookPageRow,
   BookRow,
@@ -49,14 +65,15 @@ import type {
   GrammarStatRow,
   GrammarTopicRow,
   LetterStatRow,
+  ReadStatRow,
   RequestRow,
   RequestSource,
   SettingsRow,
   StoryRow,
   UserCardRow,
   XpKind,
-} from '@/lib/types';
-import { levelFor, todayXp, XP_AWARDS, type XpAmountAt } from '@/lib/xp';
+} from "@/lib/types";
+import { levelFor, todayXp, XP_AWARDS, type XpAmountAt } from "@/lib/xp";
 
 // `settings.new_per_day` is nullable in the row type (a `select` can return
 // null for it), so every consumer needs a default. One definition, here.
@@ -71,12 +88,12 @@ export const DEFAULT_NEW_PER_DAY = 10;
  * practise a fourth time today should not be told to come back tomorrow. Every
  * query below that touches `cards` therefore filters to `word`.
  */
-const WORD_KIND: CardKind = 'word';
+const WORD_KIND: CardKind = "word";
 
 export { computeStreak };
 
 /** Postgres unique-violation. Thrown when two tabs race to create the settings row. */
-const UNIQUE_VIOLATION = '23505';
+const UNIQUE_VIOLATION = "23505";
 
 /**
  * The signed-in user's id, read from the locally cached session (no network
@@ -87,7 +104,7 @@ async function requireUserId(): Promise<string> {
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
   const userId = data.session?.user.id;
-  if (!userId) throw new Error('Not signed in.');
+  if (!userId) throw new Error("Not signed in.");
   return userId;
 }
 
@@ -96,9 +113,9 @@ async function getSettings(): Promise<SettingsRow> {
   const userId = await requireUserId();
 
   const existing = await supabase
-    .from('settings')
-    .select('*')
-    .eq('user_id', userId)
+    .from("settings")
+    .select("*")
+    .eq("user_id", userId)
     .maybeSingle<SettingsRow>();
   if (existing.error) throw existing.error;
   if (existing.data) return existing.data;
@@ -106,7 +123,7 @@ async function getSettings(): Promise<SettingsRow> {
   // Insert bare: every other column has a database default (show_latin true,
   // new_per_day 10, tts_enabled true), so the defaults live in exactly one place.
   const created = await supabase
-    .from('settings')
+    .from("settings")
     .insert({ user_id: userId })
     .select()
     .single<SettingsRow>();
@@ -115,9 +132,9 @@ async function getSettings(): Promise<SettingsRow> {
   // Lost a race with another tab -- the row exists now, so read it back.
   if (created.error.code === UNIQUE_VIOLATION) {
     const reread = await supabase
-      .from('settings')
-      .select('*')
-      .eq('user_id', userId)
+      .from("settings")
+      .select("*")
+      .eq("user_id", userId)
       .single<SettingsRow>();
     if (reread.error) throw reread.error;
     return reread.data;
@@ -127,13 +144,13 @@ async function getSettings(): Promise<SettingsRow> {
 
 /** Persist a partial settings change and return the updated row. */
 async function updateSettings(
-  patch: Partial<Omit<SettingsRow, 'user_id'>>,
+  patch: Partial<Omit<SettingsRow, "user_id">>,
 ): Promise<SettingsRow> {
   const userId = await requireUserId();
   const { data, error } = await supabase
-    .from('settings')
+    .from("settings")
     .update(patch)
-    .eq('user_id', userId)
+    .eq("user_id", userId)
     .select()
     .single<SettingsRow>();
   if (error) throw error;
@@ -179,15 +196,18 @@ const STREAK_PAGE_SIZE = 1000;
 const STREAK_MAX_PAGES = 10;
 
 /** One page of `reviewed_at` values, newest first. */
-async function fetchReviewedAtPage(userId: string, page: number): Promise<(string | null)[]> {
+async function fetchReviewedAtPage(
+  userId: string,
+  page: number,
+): Promise<(string | null)[]> {
   const from = page * STREAK_PAGE_SIZE;
   const { data, error } = await supabase
-    .from('review_logs')
-    .select('reviewed_at')
+    .from("review_logs")
+    .select("reviewed_at")
     // Redundant under RLS, but it is what lets the planner use
     // `review_logs_user_reviewed_idx`.
-    .eq('user_id', userId)
-    .order('reviewed_at', { ascending: false })
+    .eq("user_id", userId)
+    .order("reviewed_at", { ascending: false })
     .range(from, from + STREAK_PAGE_SIZE - 1);
   if (error) throw error;
   return (data ?? []).map((row) => row.reviewed_at as string | null);
@@ -203,16 +223,19 @@ async function fetchReviewedAtPage(userId: string, page: number): Promise<(strin
  * from, and it is why the kind filter is `review` and not "anything": a day
  * spent only turning book pages is not a day of study, and it never has been.
  */
-async function fetchStudiedAtPage(userId: string, page: number): Promise<(string | null)[]> {
+async function fetchStudiedAtPage(
+  userId: string,
+  page: number,
+): Promise<(string | null)[]> {
   const from = page * STREAK_PAGE_SIZE;
   const { data, error } = await supabase
-    .from('xp_events')
-    .select('created_at')
+    .from("xp_events")
+    .select("created_at")
     // Redundant under RLS, but it is what lets the planner use
     // `xp_events_user_created_idx`.
-    .eq('user_id', userId)
-    .eq('kind', 'review')
-    .order('created_at', { ascending: false })
+    .eq("user_id", userId)
+    .eq("kind", "review")
+    .order("created_at", { ascending: false })
     .range(from, from + STREAK_PAGE_SIZE - 1);
   if (error) throw error;
   return (data ?? []).map((row) => row.created_at as string | null);
@@ -268,12 +291,12 @@ async function fetchAllReviewDays(userId: string): Promise<Set<string>> {
  */
 async function countNewDoneToday(userId: string, now: Date): Promise<number> {
   const { count, error } = await supabase
-    .from('review_logs')
-    .select('*, cards!inner(kind)', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .eq('state_before', 'new')
-    .eq('cards.kind', WORD_KIND)
-    .gte('reviewed_at', startOfLocalDay(now).toISOString());
+    .from("review_logs")
+    .select("*, cards!inner(kind)", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .eq("state_before", "new")
+    .eq("cards.kind", WORD_KIND)
+    .gte("reviewed_at", startOfLocalDay(now).toISOString());
   if (error) throw error;
   return count ?? 0;
 }
@@ -301,20 +324,23 @@ async function deckStatsFor(userId: string, now: Date): Promise<DeckStats> {
     // show it as Due *and* against the new allowance. New cards belong to the
     // allowance only.
     supabase
-      .from('user_cards')
-      .select('*, cards!inner(kind)', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('cards.kind', kind)
-      .neq('state', 'new')
-      .lte('due', nowIso),
-    supabase.from('cards').select('*', { count: 'exact', head: true }).eq('kind', kind),
+      .from("user_cards")
+      .select("*, cards!inner(kind)", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("cards.kind", kind)
+      .neq("state", "new")
+      .lte("due", nowIso),
+    supabase
+      .from("cards")
+      .select("*", { count: "exact", head: true })
+      .eq("kind", kind),
     // Every `user_cards` row references a card (FK), one row per card, so
     // "cards of this deck with no user_cards row" is the difference of two counts.
     supabase
-      .from('user_cards')
-      .select('*, cards!inner(kind)', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('cards.kind', kind),
+      .from("user_cards")
+      .select("*, cards!inner(kind)", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("cards.kind", kind),
     countNewDoneToday(userId, now),
   ]);
 
@@ -324,7 +350,10 @@ async function deckStatsFor(userId: string, now: Date): Promise<DeckStats> {
 
   return {
     dueCount: due.count ?? 0,
-    newAvailable: Math.max(0, (totalCards.count ?? 0) - (studiedCards.count ?? 0)),
+    newAvailable: Math.max(
+      0,
+      (totalCards.count ?? 0) - (studiedCards.count ?? 0),
+    ),
     newDoneToday,
   };
 }
@@ -402,33 +431,43 @@ function embeddedCard(row: DueJoinRow): CardRow | null {
  * `studied` can be filtered out, so the allowance is always filled while the
  * deck still has unseen cards.
  */
-async function fetchNewCards(userId: string, allowance: number): Promise<CardRow[]> {
+async function fetchNewCards(
+  userId: string,
+  allowance: number,
+): Promise<CardRow[]> {
   if (allowance <= 0) return [];
 
-  const studied = await supabase.from('user_cards').select('card_id').eq('user_id', userId);
+  const studied = await supabase
+    .from("user_cards")
+    .select("card_id")
+    .eq("user_id", userId);
   if (studied.error) throw studied.error;
-  const seen = new Set((studied.data ?? []).map((row) => row.card_id as string));
+  const seen = new Set(
+    (studied.data ?? []).map((row) => row.card_id as string),
+  );
 
   const candidates = await supabase
-    .from('cards')
-    .select('*')
+    .from("cards")
+    .select("*")
     // The deck filter. Without it the letters would queue themselves as word
     // cards, which is exactly the arrangement this app has just left behind.
-    .eq('kind', WORD_KIND)
+    .eq("kind", WORD_KIND)
     // Words the user added come first (`created_by` is null for seed rows):
     // someone who has just typed in a word wants it in today's session, not in
     // two months' time once the seed deck has been worked through.
-    .order('created_by', { ascending: false, nullsFirst: false })
+    .order("created_by", { ascending: false, nullsFirst: false })
     // Then seed order -- the deck file is grouped by domain, easiest first, and
     // each seeding batch shares a `created_at`. `id` only breaks ties inside a
     // batch, so the order within one is arbitrary but stable.
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true })
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
     .limit(Math.min(seen.size + allowance, MAX_ROWS))
     .returns<CardRow[]>();
   if (candidates.error) throw candidates.error;
 
-  return (candidates.data ?? []).filter((card) => !seen.has(card.id)).slice(0, allowance);
+  return (candidates.data ?? [])
+    .filter((card) => !seen.has(card.id))
+    .slice(0, allowance);
 }
 
 /**
@@ -447,18 +486,18 @@ async function getQueue(now: Date = new Date()): Promise<QueueEntry[]> {
     getSettings(),
     countNewDoneToday(userId, now),
     supabase
-      .from('user_cards')
+      .from("user_cards")
       // `!inner` rather than a plain embed so the deck filter below can apply to
       // the joined card. The FK is `not null`, so the join drops nothing.
-      .select('*, cards!inner(*)')
-      .eq('user_id', userId)
-      .eq('cards.kind', kind)
+      .select("*, cards!inner(*)")
+      .eq("user_id", userId)
+      .eq("cards.kind", kind)
       // Matches the dashboard's `dueCount`. Under lazy insertion a `new` row
       // cannot exist, but if one ever did, counting it here and not there would
       // make "Due 0" open a session with cards in it.
-      .neq('state', 'new')
-      .lte('due', now.toISOString())
-      .order('due', { ascending: true })
+      .neq("state", "new")
+      .lte("due", now.toISOString())
+      .order("due", { ascending: true })
       .limit(MAX_ROWS)
       .returns<DueJoinRow[]>(),
   ]);
@@ -482,9 +521,9 @@ async function getQueue(now: Date = new Date()): Promise<QueueEntry[]> {
     byId.set(card.id, { cardId: card.id, isNew: false, card, userCard });
   }
 
-  const newCards = (await fetchNewCards(userId, Math.max(0, newPerDay - newDoneToday))).filter(
-    (card) => card.kind === kind,
-  );
+  const newCards = (
+    await fetchNewCards(userId, Math.max(0, newPerDay - newDoneToday))
+  ).filter((card) => card.kind === kind);
   for (const card of newCards) {
     byId.set(card.id, { cardId: card.id, isNew: true, card, userCard: null });
   }
@@ -548,8 +587,10 @@ async function submitReview({
   // The caller feeds this straight back in as the starting row for the card's
   // next grade, so a response that is not a row would corrupt the following
   // answer rather than fail loudly. Check it once, here.
-  if (!data || typeof data.card_id !== 'string') {
-    throw new Error('The server did not return the saved card. The answer may not be recorded.');
+  if (!data || typeof data.card_id !== "string") {
+    throw new Error(
+      "The server did not return the saved card. The answer may not be recorded.",
+    );
   }
   return data;
 }
@@ -572,10 +613,10 @@ async function submitReview({
  */
 async function listCards(): Promise<CardRow[]> {
   const { data, error } = await supabase
-    .from('cards')
-    .select('*')
-    .eq('kind', WORD_KIND)
-    .order('sr_cyr', { ascending: true })
+    .from("cards")
+    .select("*")
+    .eq("kind", WORD_KIND)
+    .order("sr_cyr", { ascending: true })
     .limit(MAX_ROWS)
     .returns<CardRow[]>();
   if (error) throw error;
@@ -593,7 +634,7 @@ async function addCard(input: CardInput): Promise<CardRow> {
   const userId = await requireUserId();
   const card = trimCardInput(input);
   const { data, error } = await supabase
-    .from('cards')
+    .from("cards")
     // `created_by` is not decoration: the `cards_insert_own` policy checks it.
     .insert({ ...card, created_by: userId })
     .select()
@@ -606,9 +647,9 @@ async function addCard(input: CardInput): Promise<CardRow> {
 async function updateCard(id: string, input: CardInput): Promise<CardRow> {
   const card = trimCardInput(input);
   const { data, error } = await supabase
-    .from('cards')
+    .from("cards")
     .update(card)
-    .eq('id', id)
+    .eq("id", id)
     .select()
     .single<CardRow>();
   if (error) throw duplicateHeadword(error, card.sr_cyr);
@@ -622,7 +663,9 @@ async function updateCard(id: string, input: CardInput): Promise<CardRow> {
  */
 function duplicateHeadword(error: { code?: string }, srCyr: string): unknown {
   if (error.code !== UNIQUE_VIOLATION) return error;
-  return new Error(`“${srCyr}” is already in the deck. Search for it and edit that card instead.`);
+  return new Error(
+    `“${srCyr}” is already in the deck. Search for it and edit that card instead.`,
+  );
 }
 
 /**
@@ -631,7 +674,7 @@ function duplicateHeadword(error: { code?: string }, srCyr: string): unknown {
  * needs confirming in the UI.
  */
 async function deleteCard(id: string): Promise<void> {
-  const { error } = await supabase.from('cards').delete().eq('id', id);
+  const { error } = await supabase.from("cards").delete().eq("id", id);
   if (error) throw error;
 }
 
@@ -667,17 +710,17 @@ async function getLibrary(): Promise<LibraryEntry[]> {
   for (let page = 0; page < LIBRARY_MAX_PAGES; page += 1) {
     const from = page * LIBRARY_PAGE_SIZE;
     const { data, error } = await supabase
-      .from('user_cards')
+      .from("user_cards")
       // `!inner` rather than a plain embed so the deck filter applies to the
       // joined card. The FK is `not null`, so the join drops nothing.
-      .select('*, cards!inner(*)')
-      .eq('user_id', userId)
+      .select("*, cards!inner(*)")
+      .eq("user_id", userId)
       // Words only. Letters have not lived in this table since
       // 20260904120000_letter_stats.sql, and a stray one would be shown here as
       // a word he knows — which is the trainer's question, not this screen's.
-      .eq('cards.kind', WORD_KIND)
-      .order('last_review', { ascending: false, nullsFirst: false })
-      .order('card_id', { ascending: true })
+      .eq("cards.kind", WORD_KIND)
+      .order("last_review", { ascending: false, nullsFirst: false })
+      .order("card_id", { ascending: true })
       .range(from, from + LIBRARY_PAGE_SIZE - 1)
       .returns<DueJoinRow[]>();
     if (error) throw error;
@@ -712,8 +755,10 @@ async function markKnown(cardId: string): Promise<UserCardRow> {
   if (error) throw error;
   // The review screen feeds this back into the rows it is holding, so a
   // response that is not a row would corrupt the next answer rather than fail.
-  if (!data || typeof data.card_id !== 'string') {
-    throw new Error('The server did not return the saved card. The word may not be marked known.');
+  if (!data || typeof data.card_id !== "string") {
+    throw new Error(
+      "The server did not return the saved card. The word may not be marked known.",
+    );
   }
   return data;
 }
@@ -742,8 +787,14 @@ async function quickAddWord(sr: string, en: string): Promise<QuickAddResult> {
   if (error) throw error;
   // The screen reports on the strength of this, so a response that is not the
   // row is worth saying out loud rather than rendering as "undefined".
-  if (!data || typeof data.card_id !== 'string' || typeof data.created !== 'boolean') {
-    throw new Error('The server did not return the saved word. It may not have been added.');
+  if (
+    !data ||
+    typeof data.card_id !== "string" ||
+    typeof data.created !== "boolean"
+  ) {
+    throw new Error(
+      "The server did not return the saved word. It may not have been added.",
+    );
   }
   return data;
 }
@@ -759,10 +810,10 @@ async function quickAddWord(sr: string, en: string): Promise<QuickAddResult> {
 async function listDrillStats(): Promise<DrillStatRow[]> {
   const userId = await requireUserId();
   const { data, error } = await supabase
-    .from('drill_stats')
-    .select('*')
+    .from("drill_stats")
+    .select("*")
     // Redundant under RLS, but it is what makes this a primary-key lookup.
-    .eq('user_id', userId)
+    .eq("user_id", userId)
     .returns<DrillStatRow[]>();
   if (error) throw error;
   return data ?? [];
@@ -775,9 +826,14 @@ async function listDrillStats(): Promise<DrillStatRow[]> {
  * *replaces* the counts and this has to add to them. One request per answered
  * word — never one per keystroke — and the returned rows are the new totals.
  */
-async function recordDrillAttempts(deltas: readonly LetterDelta[]): Promise<DrillStatRow[]> {
+async function recordDrillAttempts(
+  deltas: readonly LetterDelta[],
+): Promise<DrillStatRow[]> {
   if (deltas.length === 0) return [];
-  const { data, error } = await supabase.rpc(BUMP_DRILL_STATS_FN, bumpDrillStatsParams(deltas));
+  const { data, error } = await supabase.rpc(
+    BUMP_DRILL_STATS_FN,
+    bumpDrillStatsParams(deltas),
+  );
   if (error) throw error;
   // The project has no generated `Database` types, so an RPC's result type is
   // whatever the caller says it is. The function returns `setof drill_stats`.
@@ -799,11 +855,11 @@ async function recordDrillAttempts(deltas: readonly LetterDelta[]): Promise<Dril
  */
 async function listLetterCards(): Promise<CardRow[]> {
   const { data, error } = await supabase
-    .from('cards')
-    .select('*')
-    .eq('kind', 'letter')
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true })
+    .from("cards")
+    .select("*")
+    .eq("kind", "letter")
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
     .limit(MAX_ROWS)
     .returns<CardRow[]>();
   if (error) throw error;
@@ -818,10 +874,10 @@ async function listLetterCards(): Promise<CardRow[]> {
 async function listLetterStats(): Promise<LetterStatRow[]> {
   const userId = await requireUserId();
   const { data, error } = await supabase
-    .from('letter_stats')
-    .select('*')
+    .from("letter_stats")
+    .select("*")
     // Redundant under RLS, but it is what makes this a primary-key lookup.
-    .eq('user_id', userId)
+    .eq("user_id", userId)
     .returns<LetterStatRow[]>();
   if (error) throw error;
   return data ?? [];
@@ -836,7 +892,10 @@ async function listLetterStats(): Promise<LetterStatRow[]> {
  * `xp_events`, so a rating that tallied but did not pay would be a rating that
  * did not happen as far as the dashboard is concerned.
  */
-async function rateLetter(letter: string, gotIt: boolean): Promise<LetterStatRow> {
+async function rateLetter(
+  letter: string,
+  gotIt: boolean,
+): Promise<LetterStatRow> {
   const { data, error } = await supabase
     .rpc(RATE_LETTER_FN, rateLetterParams(letter, gotIt))
     // The function returns `public.letter_stats`, i.e. one row rather than a
@@ -846,10 +905,125 @@ async function rateLetter(letter: string, gotIt: boolean): Promise<LetterStatRow
   if (error) throw error;
   // The caller feeds this straight back into the tallies it is holding, so a
   // response that is not a row would quietly corrupt the next run's order.
-  if (!data || typeof data.letter !== 'string') {
-    throw new Error('The server did not return the saved letter. The rating may not be recorded.');
+  if (!data || typeof data.letter !== "string") {
+    throw new Error(
+      "The server did not return the saved letter. The rating may not be recorded.",
+    );
   }
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// "Read it" — reading whole words in Cyrillic
+// ---------------------------------------------------------------------------
+
+/**
+ * How the read tallies page their read. My words' reasoning, one table along:
+ * the deck is 724 words and a reader who has rated every one of them would sit
+ * a single page short of PostgREST's cap, which is too close to leave to luck.
+ */
+const READ_STATS_PAGE_SIZE = MAX_ROWS;
+const READ_STATS_MAX_PAGES = 10;
+
+/**
+ * The user's per-word reading tallies.
+ *
+ * `buildRun` turns them into the order of the next run and `buildThemes` into
+ * the "N words · M solid" on the picker. One row per word he has actually
+ * read here, so this is small until it is not — hence the paging.
+ */
+async function listReadStats(): Promise<ReadStatRow[]> {
+  const userId = await requireUserId();
+
+  const rows: ReadStatRow[] = [];
+  for (let page = 0; page < READ_STATS_MAX_PAGES; page += 1) {
+    const from = page * READ_STATS_PAGE_SIZE;
+    const { data, error } = await supabase
+      .from("read_stats")
+      .select("*")
+      // Redundant under RLS, but it is what makes this a primary-key range.
+      .eq("user_id", userId)
+      .order("card_id", { ascending: true })
+      .range(from, from + READ_STATS_PAGE_SIZE - 1)
+      .returns<ReadStatRow[]>();
+    if (error) throw error;
+
+    const batch = data ?? [];
+    rows.push(...batch);
+    if (batch.length < READ_STATS_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
+/**
+ * Record one reading of one word, and the XP it earns.
+ *
+ * Through `rate_read` rather than an upsert for the two reasons `rateLetter`
+ * gives: PostgREST's upsert *replaces* a count where this has to add to it, and
+ * the XP has to land in the same transaction — the ring and the day streak
+ * are both read off `xp_events`, so a reading that tallied but did not pay
+ * would be a reading that did not happen as far as the dashboard is concerned.
+ */
+async function rateRead(cardId: string, gotIt: boolean): Promise<ReadStatRow> {
+  const { data, error } = await supabase
+    .rpc(RATE_READ_FN, rateReadParams(cardId, gotIt))
+    // The function returns `public.read_stats`, i.e. one row rather than a set,
+    // so PostgREST answers with a bare object -- `.single()` is what tells
+    // supabase-js to type it as one.
+    .single<ReadStatRow>();
+  if (error) throw error;
+  // The drill feeds this straight back into the tallies it is holding, so a
+  // response that is not a row would quietly corrupt the next run's order.
+  if (!data || typeof data.card_id !== "string") {
+    throw new Error(
+      "The server did not return the saved word. The reading may not be recorded.",
+    );
+  }
+  return data;
+}
+
+/**
+ * Where `listThemes` gets its three lists.
+ *
+ * Injected rather than fetched outright because all three are lists the app
+ * already holds under their own React Query keys — `['cards']`, `['read-stats']`
+ * and `['library']`. The picker passes the cache-backed fetchers (see
+ * `app/(app)/read.tsx`), so opening it straight after the Deck screen or My
+ * words costs nothing; called bare, each read goes to the server as usual.
+ */
+interface ThemeSources {
+  listCards: () => Promise<CardRow[]>;
+  listReadStats: () => Promise<ReadStatRow[]>;
+  getLibrary: () => Promise<LibraryEntry[]>;
+}
+
+/**
+ * The themes the picker offers: every domain the deck actually has, plus "My
+ * words", each with how many words it holds and how many are solid.
+ *
+ * Three reads folded by `buildThemes`, rather than a `group by` this schema has
+ * no view for. They run together, so the picker is one round trip however many
+ * themes there turn out to be.
+ *
+ * Known is `user_cards.state = 'review'` — `lib/library.ts`'s one rule, the
+ * same one the dashboard's Words ladder counts by, so "My words" here can never
+ * disagree with "My words" there.
+ */
+async function listThemes(
+  sources: Partial<ThemeSources> = {},
+): Promise<Theme[]> {
+  const [cards, stats, library] = await Promise.all([
+    (sources.listCards ?? listCards)(),
+    (sources.listReadStats ?? listReadStats)(),
+    (sources.getLibrary ?? getLibrary)(),
+  ]);
+
+  const knownIds = new Set(
+    library
+      .filter((entry) => isKnown(entry.userCard))
+      .map((entry) => entry.card.id),
+  );
+  return buildThemes({ cards, stats: statsByCard(stats), knownIds });
 }
 
 // ---------------------------------------------------------------------------
@@ -861,7 +1035,7 @@ async function rateLetter(letter: string, gotIt: boolean): Promise<LetterStatRow
  * (raised before the statement is ever sent, when the table is absent from the
  * cached schema).
  */
-const MISSING_RELATION = new Set(['42P01', 'PGRST205']);
+const MISSING_RELATION = new Set(["42P01", "PGRST205"]);
 
 /**
  * Relation-shaped failure messages, as a backstop for a PostgREST version that
@@ -873,15 +1047,19 @@ const MISSING_RELATION = new Set(['42P01', 'PGRST205']);
  * schema cache" — and swallowing those would hide a column-name mismatch when
  * the reader migration lands, silently reporting 0 stories forever.
  */
-const MISSING_RELATION_MESSAGE = /relation .*stories.* does not exist|could not find the table/i;
+const MISSING_RELATION_MESSAGE =
+  /relation .*stories.* does not exist|could not find the table/i;
 
 /**
  * True when the failure is "there is no `stories` table", rather than a real
  * error worth surfacing.
  */
-export function isMissingStoriesTable(error: { code?: string; message?: string }): boolean {
+export function isMissingStoriesTable(error: {
+  code?: string;
+  message?: string;
+}): boolean {
   if (error.code && MISSING_RELATION.has(error.code)) return true;
-  return MISSING_RELATION_MESSAGE.test(error.message ?? '');
+  return MISSING_RELATION_MESSAGE.test(error.message ?? "");
 }
 
 /**
@@ -895,11 +1073,11 @@ export function isMissingStoriesTable(error: { code?: string; message?: string }
  */
 async function countStoriesFinished(userId: string): Promise<number> {
   const { count, error } = await supabase
-    .from('stories')
-    .select('*', { count: 'exact', head: true })
+    .from("stories")
+    .select("*", { count: "exact", head: true })
     // Redundant under RLS, but it keeps this a user-scoped index lookup.
-    .eq('user_id', userId)
-    .not('finished_at', 'is', null);
+    .eq("user_id", userId)
+    .not("finished_at", "is", null);
   if (!error) return count ?? 0;
   if (isMissingStoriesTable(error)) return 0;
   throw error;
@@ -925,32 +1103,33 @@ async function countStoriesFinished(userId: string): Promise<number> {
 async function getProgress(): Promise<Progress> {
   const userId = await requireUserId();
 
-  const [drillStats, letterStats, known, storiesRead, booksFinished] = await Promise.all([
-    listDrillStats(),
-    listLetterStats(),
-    // "Known" is a word that has graduated out of learning: `state = 'review'`.
-    // 'relearning' is deliberately excluded — a lapsed word is one he no longer
-    // knows, and counting it would make the milestone ladder go backwards
-    // silently rather than honestly.
-    //
-    // Words only: letter cards share this table, and letter mastery is the
-    // trainer's `drill_stats` and the drill's `letter_stats`, never FSRS
-    // (spec §4). Counting a graduated letter as a known word would inflate the
-    // Words ladder by up to thirty.
-    supabase
-      .from('user_cards')
-      .select('*, cards!inner(kind)', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('cards.kind', WORD_KIND)
-      .eq('state', 'review'),
-    countStoriesFinished(userId),
-    supabase
-      .from('books')
-      .select('*', { count: 'exact', head: true })
-      // Redundant under RLS, but it keeps this a user-scoped index lookup.
-      .eq('user_id', userId)
-      .not('finished_at', 'is', null),
-  ]);
+  const [drillStats, letterStats, known, storiesRead, booksFinished] =
+    await Promise.all([
+      listDrillStats(),
+      listLetterStats(),
+      // "Known" is a word that has graduated out of learning: `state = 'review'`.
+      // 'relearning' is deliberately excluded — a lapsed word is one he no longer
+      // knows, and counting it would make the milestone ladder go backwards
+      // silently rather than honestly.
+      //
+      // Words only: letter cards share this table, and letter mastery is the
+      // trainer's `drill_stats` and the drill's `letter_stats`, never FSRS
+      // (spec §4). Counting a graduated letter as a known word would inflate the
+      // Words ladder by up to thirty.
+      supabase
+        .from("user_cards")
+        .select("*, cards!inner(kind)", { count: "exact", head: true })
+        .eq("user_id", userId)
+        .eq("cards.kind", WORD_KIND)
+        .eq("state", "review"),
+      countStoriesFinished(userId),
+      supabase
+        .from("books")
+        .select("*", { count: "exact", head: true })
+        // Redundant under RLS, but it keeps this a user-scoped index lookup.
+        .eq("user_id", userId)
+        .not("finished_at", "is", null),
+    ]);
   if (known.error) throw known.error;
   if (booksFinished.error) throw booksFinished.error;
 
@@ -982,11 +1161,14 @@ async function getProgress(): Promise<Progress> {
  * zero-XP event is a row that means nothing, and `book_page` and `request` are
  * worth exactly nothing (see `XP_AWARDS`).
  */
-async function awardXp(kind: XpKind, amount: number = XP_AWARDS[kind]): Promise<void> {
+async function awardXp(
+  kind: XpKind,
+  amount: number = XP_AWARDS[kind],
+): Promise<void> {
   if (!Number.isFinite(amount) || amount <= 0) return;
   const userId = await requireUserId();
   const { error } = await supabase
-    .from('xp_events')
+    .from("xp_events")
     // `user_id` is not decoration: the `xp_events_insert_own` policy checks it.
     .insert({ user_id: userId, amount: Math.round(amount), kind });
   if (error) throw error;
@@ -1020,16 +1202,16 @@ async function fetchXpTotal(userId: string): Promise<number> {
   for (let page = 0; page < XP_MAX_PAGES; page += 1) {
     const from = page * XP_PAGE_SIZE;
     const { data, error } = await supabase
-      .from('xp_events')
-      .select('amount')
+      .from("xp_events")
+      .select("amount")
       // Redundant under RLS, but it is what lets the planner use
       // `xp_events_user_created_idx`.
-      .eq('user_id', userId)
+      .eq("user_id", userId)
       // A `range` without an order is not pagination: Postgres may return the
       // rows in a different order for each page, which would double-count some
       // events and drop others. `id` breaks ties within one instant.
-      .order('created_at', { ascending: false })
-      .order('id', { ascending: true })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
       .range(from, from + XP_PAGE_SIZE - 1)
       .returns<{ amount: number | null }[]>();
     if (error) throw error;
@@ -1055,16 +1237,20 @@ async function getXpSummary(now: Date = new Date()): Promise<XpSummary> {
   const [total, todayRows] = await Promise.all([
     fetchXpTotal(userId),
     supabase
-      .from('xp_events')
-      .select('amount, created_at')
-      .eq('user_id', userId)
-      .gte('created_at', startOfLocalDay(now).toISOString())
+      .from("xp_events")
+      .select("amount, created_at")
+      .eq("user_id", userId)
+      .gte("created_at", startOfLocalDay(now).toISOString())
       .limit(MAX_ROWS)
       .returns<XpAmountAt[]>(),
   ]);
   if (todayRows.error) throw todayRows.error;
 
-  return { total, level: levelFor(total), today: todayXp(todayRows.data ?? [], now) };
+  return {
+    total,
+    level: levelFor(total),
+    today: todayXp(todayRows.data ?? [], now),
+  };
 }
 
 /**
@@ -1083,17 +1269,19 @@ export interface ProgressReport {
   requestsFulfilled: number;
 }
 
-async function getProgressReport(now: Date = new Date()): Promise<ProgressReport> {
+async function getProgressReport(
+  now: Date = new Date(),
+): Promise<ProgressReport> {
   const userId = await requireUserId();
 
   const [days, fulfilled] = await Promise.all([
     fetchAllReviewDays(userId),
     supabase
-      .from('requests')
-      .select('*', { count: 'exact', head: true })
+      .from("requests")
+      .select("*", { count: "exact", head: true })
       // Redundant under RLS, but it keeps this a user-scoped index lookup.
-      .eq('user_id', userId)
-      .eq('status', 'done'),
+      .eq("user_id", userId)
+      .eq("status", "done"),
   ]);
   if (fulfilled.error) throw fulfilled.error;
 
@@ -1118,16 +1306,16 @@ async function getProgressReport(now: Date = new Date()): Promise<ProgressReport
 async function listStories(): Promise<StoryRow[]> {
   const userId = await requireUserId();
   const { data, error } = await supabase
-    .from('stories')
-    .select('*')
+    .from("stories")
+    .select("*")
     // Redundant under RLS, but it is what lets the planner use
     // `stories_user_created_idx`.
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false })
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
     // `created_at` defaults to now(), and the four warm-up stories are seeded
     // in one statement — so without a tiebreaker they come back in an order
     // that can change per fetch.
-    .order('id', { ascending: true })
+    .order("id", { ascending: true })
     .limit(MAX_ROWS)
     .returns<StoryRow[]>();
   if (error) throw error;
@@ -1141,11 +1329,14 @@ async function listStories(): Promise<StoryRow[]> {
  * whose `finished_at` is null, and re-stamping the date on one that is already
  * finished would change nothing that is counted anywhere.
  */
-async function finishStory(id: string, now: Date = new Date()): Promise<StoryRow> {
+async function finishStory(
+  id: string,
+  now: Date = new Date(),
+): Promise<StoryRow> {
   const { data, error } = await supabase
-    .from('stories')
+    .from("stories")
     .update({ finished_at: now.toISOString() })
-    .eq('id', id)
+    .eq("id", id)
     .select()
     .single<StoryRow>();
   if (error) throw error;
@@ -1166,7 +1357,10 @@ async function finishStory(id: string, now: Date = new Date()): Promise<StoryRow
  *
  * Pure, so the preference is testable without a database.
  */
-export function pickCard(rows: readonly CardRow[], needle: string): CardRow | null {
+export function pickCard(
+  rows: readonly CardRow[],
+  needle: string,
+): CardRow | null {
   const trimmed = needle.trim();
   const lowered = trimmed.toLowerCase();
   return (
@@ -1196,10 +1390,10 @@ async function findCardByWord(word: string): Promise<CardRow | null> {
   if (!needle) return null;
 
   const { data, error } = await supabase
-    .from('cards')
-    .select('*')
-    .eq('kind', WORD_KIND)
-    .ilike('sr_cyr', needle)
+    .from("cards")
+    .select("*")
+    .eq("kind", WORD_KIND)
+    .ilike("sr_cyr", needle)
     .limit(5)
     .returns<CardRow[]>();
   if (error) throw error;
@@ -1212,7 +1406,7 @@ async function findCardByWord(word: string): Promise<CardRow | null> {
 // ---------------------------------------------------------------------------
 
 /** The private bucket every photographed page is uploaded to. */
-const BOOK_PHOTOS_BUCKET = 'book-photos';
+const BOOK_PHOTOS_BUCKET = "book-photos";
 
 /**
  * The library, newest first — pending and ready books together.
@@ -1224,15 +1418,15 @@ const BOOK_PHOTOS_BUCKET = 'book-photos';
 async function listBooks(): Promise<BookRow[]> {
   const userId = await requireUserId();
   const { data, error } = await supabase
-    .from('books')
-    .select('*')
+    .from("books")
+    .select("*")
     // Redundant under RLS, but it is what lets the planner use
     // `books_user_created_idx`.
-    .eq('user_id', userId)
-    .order('created_at', { ascending: false, nullsFirst: false })
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false, nullsFirst: false })
     // `created_at` defaults to now(), and two books saved in the same instant
     // would otherwise come back in an order that changed per fetch.
-    .order('id', { ascending: true })
+    .order("id", { ascending: true })
     .limit(MAX_ROWS)
     .returns<BookRow[]>();
   if (error) throw error;
@@ -1242,10 +1436,10 @@ async function listBooks(): Promise<BookRow[]> {
 /** One book's pages, in reading order. */
 async function getBookPages(bookId: string): Promise<BookPageRow[]> {
   const { data, error } = await supabase
-    .from('book_pages')
-    .select('*')
-    .eq('book_id', bookId)
-    .order('page_no', { ascending: true })
+    .from("book_pages")
+    .select("*")
+    .eq("book_id", bookId)
+    .order("page_no", { ascending: true })
     .limit(MAX_ROWS)
     .returns<BookPageRow[]>();
   if (error) throw error;
@@ -1299,20 +1493,20 @@ async function createBookWithPhotos({
   // with no title, or eighty megabytes of it, reaching storage by another route.
   const invalid =
     bookTitleError(title_en) ??
-    cyrillicTitleError(title_cyr ?? '') ??
+    cyrillicTitleError(title_cyr ?? "") ??
     pageCountError(photos.length);
   if (invalid) throw new Error(invalid);
 
   const created = await supabase
-    .from('books')
+    .from("books")
     // `user_id` is not decoration: the `books_insert_own` policy checks it, and
     // the composite FK on `book_pages` keys off the same pair.
     .insert({
       user_id: userId,
       title_en: title_en.trim(),
       title_cyr: title_cyr?.trim() ? title_cyr.trim() : null,
-      status: 'pending',
-      source: 'photos',
+      status: "pending",
+      source: "photos",
     })
     .select()
     .single<BookRow>();
@@ -1352,7 +1546,7 @@ async function createBookWithPhotos({
 
     // One insert for every page rather than one per upload: the rows are what
     // make the book readable, so they land together or not at all.
-    const pages = await supabase.from('book_pages').insert(
+    const pages = await supabase.from("book_pages").insert(
       photos.map((_photo, index) => ({
         book_id: book.id,
         // Denormalised from `books`, and checked against it by the composite
@@ -1392,7 +1586,10 @@ async function createBookWithPhotos({
  * errors in `{ error }` rather than throwing, so reading it is the only way to
  * know either happened. `catch` stays for the transport-level throw.
  */
-async function discardBook(bookId: string, uploadedPaths: readonly string[]): Promise<void> {
+async function discardBook(
+  bookId: string,
+  uploadedPaths: readonly string[],
+): Promise<void> {
   let objectsGone = true;
 
   if (uploadedPaths.length > 0) {
@@ -1403,17 +1600,20 @@ async function discardBook(bookId: string, uploadedPaths: readonly string[]): Pr
       if (error) throw error;
     } catch (error) {
       objectsGone = false;
-      console.warn('[books] could not remove the uploaded photos; keeping the book row', error);
+      console.warn(
+        "[books] could not remove the uploaded photos; keeping the book row",
+        error,
+      );
     }
   }
 
   if (!objectsGone) return;
 
   try {
-    const { error } = await supabase.from('books').delete().eq('id', bookId);
+    const { error } = await supabase.from("books").delete().eq("id", bookId);
     if (error) throw error;
   } catch (error) {
-    console.warn('[books] could not delete the half-saved book row', error);
+    console.warn("[books] could not delete the half-saved book row", error);
   }
 }
 
@@ -1424,11 +1624,14 @@ async function discardBook(bookId: string, uploadedPaths: readonly string[]): Pr
  * offers the button on a book whose `finished_at` is null, and re-stamping the
  * date on one already finished would change nothing that is counted anywhere.
  */
-async function finishBook(id: string, now: Date = new Date()): Promise<BookRow> {
+async function finishBook(
+  id: string,
+  now: Date = new Date(),
+): Promise<BookRow> {
   const { data, error } = await supabase
-    .from('books')
+    .from("books")
     .update({ finished_at: now.toISOString() })
-    .eq('id', id)
+    .eq("id", id)
     .select()
     .single<BookRow>();
   if (error) throw error;
@@ -1444,7 +1647,7 @@ async function finishBook(id: string, now: Date = new Date()): Promise<BookRow> 
  * the queue is a list of answers, and the answer to "how do I say this?" is the
  * Serbian and its gloss — the rest of the card is what the deck screen is for.
  */
-export type RequestCard = Pick<CardRow, 'sr_cyr' | 'en'>;
+export type RequestCard = Pick<CardRow, "sr_cyr" | "en">;
 
 /** A `requests` row together with the card that answered it, if one has. */
 export interface RequestEntry extends RequestRow {
@@ -1477,19 +1680,19 @@ function embeddedRequestCard(row: RequestJoinRow): RequestCard | null {
 async function listRequests(): Promise<RequestEntry[]> {
   const userId = await requireUserId();
   const { data, error } = await supabase
-    .from('requests')
+    .from("requests")
     // Aliased to `card` because it is one card, not the table.
-    .select('*, card:cards(sr_cyr, en)')
+    .select("*, card:cards(sr_cyr, en)")
     // Redundant under RLS, but it is what lets the planner use
     // `requests_user_created_idx`.
-    .eq('user_id', userId)
+    .eq("user_id", userId)
     // `nullsFirst: false` because the column is nullable: Postgres sorts nulls
     // first in a descending order, so a row whose `created_at` somehow ended up
     // null would pin itself to the top of the queue for ever.
-    .order('created_at', { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false, nullsFirst: false })
     // `created_at` defaults to now() and two requests filed in the same instant
     // would otherwise come back in an arbitrary order that changed per fetch.
-    .order('id', { ascending: true })
+    .order("id", { ascending: true })
     .limit(MAX_ROWS)
     .returns<RequestJoinRow[]>();
   if (error) throw error;
@@ -1514,15 +1717,18 @@ export interface CreateRequestArgs {
  * No XP: `XP_AWARDS.request` is 0 on purpose (spec §9) — asking for a phrase is
  * not study, and paying for it would make the ring fillable by typing.
  */
-async function createRequest({ text_en, source = 'typed' }: CreateRequestArgs): Promise<RequestRow> {
+async function createRequest({
+  text_en,
+  source = "typed",
+}: CreateRequestArgs): Promise<RequestRow> {
   const userId = await requireUserId();
   const text = text_en.trim();
   // Trimmed to nothing is not a request. The screen blocks this before it gets
   // here; the check is what stops a blank row reaching a queue answered by hand.
-  if (text === '') throw new Error('A request needs some text.');
+  if (text === "") throw new Error("A request needs some text.");
 
   const { data, error } = await supabase
-    .from('requests')
+    .from("requests")
     // `user_id` is not decoration: the `requests_insert_own` policy checks it.
     .insert({ user_id: userId, text_en: text, source })
     .select()
@@ -1539,7 +1745,7 @@ async function createRequest({ text_en, source = 'typed' }: CreateRequestArgs): 
  * The user's accuracy on one topic, as the topic list shows it. Just the two
  * counters — `topicAccuracy` in lib/grammar.ts turns them into a percentage.
  */
-export type GrammarStat = Pick<GrammarStatRow, 'attempts' | 'correct'>;
+export type GrammarStat = Pick<GrammarStatRow, "attempts" | "correct">;
 
 /** A topic row together with the signed-in user's accuracy on it, if any. */
 export interface GrammarTopicEntry extends GrammarTopicRow {
@@ -1577,10 +1783,10 @@ function embeddedGrammarStat(row: GrammarTopicJoinRow): GrammarStat | null {
  */
 async function listGrammarTopics(): Promise<GrammarTopicEntry[]> {
   const { data, error } = await supabase
-    .from('grammar_topics')
+    .from("grammar_topics")
     // Aliased to `stat` because it is the user's one row, not the table.
-    .select('*, stat:grammar_stats(attempts, correct)')
-    .order('sort', { ascending: true })
+    .select("*, stat:grammar_stats(attempts, correct)")
+    .order("sort", { ascending: true })
     .limit(MAX_ROWS)
     .returns<GrammarTopicJoinRow[]>();
   if (error) throw error;
@@ -1597,10 +1803,10 @@ async function listGrammarTopics(): Promise<GrammarTopicEntry[]> {
  */
 async function listGrammarItems(topicId: string): Promise<GrammarItemRow[]> {
   const { data, error } = await supabase
-    .from('grammar_items')
-    .select('*')
-    .eq('topic_id', topicId)
-    .order('sort', { ascending: true })
+    .from("grammar_items")
+    .select("*")
+    .eq("topic_id", topicId)
+    .order("sort", { ascending: true })
     .limit(MAX_ROWS)
     .returns<GrammarItemRow[]>();
   if (error) throw error;
@@ -1630,7 +1836,8 @@ async function recordGrammarRun(
   return data as GrammarStatRow;
 }
 
-export type { LibraryEntry } from '@/lib/library';
+export type { LibraryEntry } from "@/lib/library";
+export type { Theme } from "@/lib/readDrill";
 
 export const api = {
   getSettings,
@@ -1650,6 +1857,9 @@ export const api = {
   listLetterCards,
   listLetterStats,
   rateLetter,
+  listReadStats,
+  rateRead,
+  listThemes,
   getProgress,
   awardXp,
   getXpSummary,

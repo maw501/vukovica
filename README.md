@@ -7,12 +7,12 @@ friendly.
 It is a **staged path**, not a toolbox. Four stages decide what the dashboard
 leads with:
 
-| Stage | Goal | Its activity |
-| --- | --- | --- |
+| Stage        | Goal                           | Its activity      |
+| ------------ | ------------------------------ | ----------------- |
 | **Alphabet** | master all 30 Cyrillic letters | Letters + Trainer |
-| **Words** | 100 → 300 → 600 known words | Review |
-| **Reading** | 1 → 5 → 20 stories finished | Reader |
-| **Books** | read a real book with his son | Books |
+| **Words**    | 100 → 300 → 600 known words    | Review            |
+| **Reading**  | 1 → 5 → 20 stories finished    | Reader            |
+| **Books**    | read a real book with his son  | Books             |
 
 The stages are **soft**: nothing is ever locked. A stage only sets the
 dashboard's emphasis — the stage name, one goal line and the primary button —
@@ -62,8 +62,8 @@ One Expo app shipped as an installable PWA.
   every word tappable. "Finished" marks a story read, which is what the Reading
   ladder counts.
 - **Books** — the feature that serves "read children's books with my son". A
-  book is either a Claude-authored Serbian rendering (the first one is *Погоди
-  колико те волим*, 16 pages) or one built from **photographs** of the physical
+  book is either a Claude-authored Serbian rendering (the first one is _Погоди
+  колико те волим_, 16 pages) or one built from **photographs** of the physical
   book on the shelf, saved immediately and transcribed offline. Reading is one
   page at a time, big Cyrillic, every word tappable.
 - **Deck** — browse and search every card (Cyrillic, Latin or English), edit or
@@ -94,7 +94,7 @@ is a different matter: that is the answer, not the exercise.
 put there once by `scripts/generate-audio.mjs` — never at runtime. The 724 word
 cards are Azure neural TTS, split between a female and a male Serbian voice; the
 30 letter cards are **Mark's wife's own recordings**, which no engine may
-overwrite (see the warning under *Seed it*). A card with a clip gets a speaker
+overwrite (see the warning under _Seed it_). A card with a clip gets a speaker
 button; a card without one gets no button, rather than a button that does
 nothing.
 
@@ -132,6 +132,8 @@ app/                 expo-router routes
   (app)/deck.tsx       browse / search / edit / the long add form
   (app)/add.tsx        quick add: two boxes, straight into My words
   (app)/library.tsx    My words: known / still learning, searchable
+  (app)/read.tsx       "Read it": pick a theme to read in Cyrillic
+  (app)/read/run.tsx   the read drill (no scheduling; read_stats tallies)
   (app)/requests.tsx   the capture queue
   (app)/progress.tsx   streak record, XP, every ladder
   (app)/settings.tsx
@@ -147,6 +149,8 @@ lib/                 all the logic worth testing, tests in lib/__tests__/
   books.ts             page numbering, photo validation, object paths
   requests.ts          what counts as a request, and how a tap becomes one
   stages.ts            the progression layer: stage, mastery, goal ladders
+  readDrill.ts         the read drill: run order, themes, the rate_read wire
+  domains.ts           what a cards.domain is called on screen
   xp.ts                XP awards, levels, the ring's geometry
   streak.ts            streak from review timestamps
   reader.ts            story tokenising, sentence lookup
@@ -173,7 +177,7 @@ dashboard renders verbatim. It does no I/O, so every stage boundary is
 unit-tested without a database; `api.getProgress()` does the fetching, batching
 the independent reads into one round trip.
 
-**Data access rule.** The client does *all* CRUD itself through supabase-js
+**Data access rule.** The client does _all_ CRUD itself through supabase-js
 under RLS. There are no exceptions any more — no functions, no service role in
 anything the app runs, no server-side code at all. The service-role key exists
 only in the three scripts under `scripts/`, which run on a laptop.
@@ -184,14 +188,15 @@ in migrations, the book and stories through `seed-user-content.mjs`, the audio
 through `generate-audio.mjs`, and the answers to the capture queue by Claude
 writing cards between sessions.
 
-**Database.** Fifteen tables. One is shared — `cards`, readable by any
+**Database.** Seventeen tables. One is shared — `cards`, readable by any
 authenticated user, holding both decks (`kind` is `word` or `letter`) — and two
 more are global seeded content with no owner: `grammar_topics` and
 `grammar_items`. The rest are owner-only, keyed on `auth.uid()`: `user_cards`
-(FSRS state), `review_logs` (append-only), `drill_stats`, `grammar_stats`,
-`settings`, `stories`, `books`, `book_pages`, `requests` and `xp_events`.
+(FSRS state), `review_logs` (append-only), `drill_stats`, `letter_stats` (the
+letters drill's tally), `read_stats` ("Read it"'s), `grammar_stats`, `settings`,
+`stories`, `books`, `book_pages`, `requests` and `xp_events`.
 
-Two of the fifteen — `chat_messages` and `ai_usage` — are left over from the
+Two of the seventeen — `chat_messages` and `ai_usage` — are left over from the
 tutor and are no longer read or written by anything. They are harmless, and
 dropping them is a migration nobody has needed yet.
 
@@ -199,7 +204,8 @@ Every table carries explicit `GRANT`s; Supabase no longer adds them for you.
 Six RPCs keep a write that spans two rows — or that has to read the row it
 writes — in one transaction: `submit_review` (card state and its log),
 `bump_drill_stats` and `bump_grammar_stats` (per-letter and per-topic counters),
-`rate_letter` (a letter's tally and the XP it earns), `mark_known` ("I already
+`rate_letter` (a letter's tally and the XP it earns), `rate_read` (the same for a
+word read aloud in "Read it", tallied in `read_stats`), `mark_known` ("I already
 know this", which parks a word as known and pays no XP at all) and
 `quick_add_word` (the card and that same claim, from two boxes on `/add`; it
 reuses the deck's card if the word is already there and calls `mark_known`
@@ -240,10 +246,10 @@ Two env files, both git-ignored. `.env.example` documents every key. There are
 **no server-side secrets** — phase 3 deleted the Edge Functions and with them
 `supabase/.env.local`.
 
-| File | Read by | Holds |
-| --- | --- | --- |
+| File         | Read by                                     | Holds                                                         |
+| ------------ | ------------------------------------------- | ------------------------------------------------------------- |
 | `.env.local` | Expo (client bundle) and the `db:*` scripts | `EXPO_PUBLIC_*` values, plus the service-role key for seeding |
-| `.env` | Expo, for production builds only | the `EXPO_PUBLIC_*` values you want baked into `dist/` |
+| `.env`       | Expo, for production builds only            | the `EXPO_PUBLIC_*` values you want baked into `dist/`        |
 
 Start the stack first, because the local keys come from it:
 
@@ -282,11 +288,11 @@ npm run db:seed           # load the word decks into public.cards (724 rows)
 `db:seed` loads both card files — `data/phase3/ghmily-vocab.json` (43, the first
 book's words) and `data/seed-deck.json` (681) — in that order, which is the
 order they reach the new-card queue. The book's vocabulary goes first
-deliberately: reading *Погоди колико те волим* with his son is the stated first
+deliberately: reading _Погоди колико те волим_ with his son is the stated first
 goal, and 43 cards is about a fortnight. It is idempotent: it upserts on the
 unique Cyrillic form, so it is safe to re-run after adding cards to either JSON.
 
-The alphabet (30 letter cards) and the twelve grammar topics are *not* seeded
+The alphabet (30 letter cards) and the twelve grammar topics are _not_ seeded
 here. They ship in migrations, so `db:migrate` alone gives you a database the
 letters drill and the grammar section already work in.
 
@@ -298,8 +304,8 @@ npm run db:seed:user                    # the project's only account
 npm run db:seed:user -- mark@local.dev  # or name it
 ```
 
-That inserts *Погоди колико те волим* (Claude's rendering of *Guess How Much I
-Love You*) with its 16 pages, and the four warm-up stories, all from
+That inserts _Погоди колико те волим_ (Claude's rendering of _Guess How Much I
+Love You_) with its 16 pages, and the four warm-up stories, all from
 `data/phase3/`. It is idempotent per row — an existing book, page or story is
 left exactly as it is, so finishing a story or editing a page survives a re-run.
 
