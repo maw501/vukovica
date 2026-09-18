@@ -22,7 +22,7 @@ shapes below.
 - Register: family/home, present tense, beginner, the voice a dad uses with a
   wife and a toddler.
 
-Counts: `letters.json` 30, `ghmily-vocab.json` 43, `ghmily-book.json` 16 pages,
+Counts: `letters.json` 30, `ghmily-vocab.json` 43, `themes.json` 246, `ghmily-book.json` 16 pages,
 `stories.json` 4, `grammar.json` 12 topics / 203 items.
 
 ---
@@ -245,3 +245,15 @@ Seeding + UI notes:
   `simple-questions` (`да ли`); a checker should collapse internal whitespace.
 - `grammar_items.accepted_lat` (spec §9) is not populated here — the
   transliteration check above covers Latin input without extra data.
+
+---
+
+## `themes.json`
+
+`Array<Card>` — 246 cards, the same shape as `seed-deck.json` (see
+`lib/cardInput.ts` `CardInput`). Added 2026-09-18 for the vocabulary Mark
+actually uses at home: `clothes` (35), `body` (42), `animals` (66),
+`toddler-talk` (81 — what a dad says to a toddler, "Донеси ми лопту.", "Погледај
+патке!", plus playtime nouns), and 22 toddler-food cards filed under the deck's
+existing `food` domain. Seeded by `scripts/seed.mjs` after the starter deck so
+the beginner path is unchanged; validated by `lib/__tests__/seed-themes.test.ts`.

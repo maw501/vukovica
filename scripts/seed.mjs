@@ -8,6 +8,9 @@
  *                                  колико те волим" finds a gloss the app owns
  *                                  rather than one it has to ask a model for.
  *   data/seed-deck.json          the 681-card starter deck
+ *   data/phase3/themes.json      clothes, body, animals, talking to a toddler,
+ *                                and toddler food — added 2026-09-18, queued
+ *                                last so the beginner path is unchanged
  * Both files have the same shape (`data/phase3/README.md`), so both go through
  * the same insert. Neither sets `kind`; the column defaults to 'word', which is
  * what keeps these rows out of the letters deck (the alphabet is seeded by
@@ -55,6 +58,7 @@ const repoRoot = path.join(scriptDir, '..');
 const SOURCES = [
   { label: 'GHMILY vocabulary', file: path.join(repoRoot, 'data', 'phase3', 'ghmily-vocab.json') },
   { label: 'starter deck', file: path.join(repoRoot, 'data', 'seed-deck.json') },
+  { label: 'themes', file: path.join(repoRoot, 'data', 'phase3', 'themes.json') },
 ];
 
 function requireEnv(name) {
