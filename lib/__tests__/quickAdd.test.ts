@@ -9,6 +9,7 @@ import {
   canQuickAdd,
   quickAddConfirmation,
   quickAddErrors,
+  quickAddMatches,
   quickAddParams,
   QUICK_ADD_DOMAIN,
   QUICK_ADD_FN,
@@ -83,6 +84,48 @@ describe('quickAddErrors', () => {
 describe('quickAddConfirmation', () => {
   it('says the word and its meaning, the same either way it was added', () => {
     expect(quickAddConfirmation('патике', 'trainers')).toBe('патике — trainers');
+  });
+});
+
+describe('quickAddMatches', () => {
+  const deck = [
+    { id: '1', sr_cyr: 'патике', en: 'trainers' },
+    { id: '2', sr_cyr: 'ципеле', en: 'shoes' },
+    { id: '3', sr_cyr: 'папуче', en: 'slippers' },
+    { id: '4', sr_cyr: 'кашика', en: 'spoon' },
+  ];
+
+  it('says nothing until there is enough typed to be worth matching', () => {
+    expect(quickAddMatches(deck, 'п', '')).toEqual([]);
+    expect(quickAddMatches(deck, '', 't')).toEqual([]);
+    expect(quickAddMatches(deck, '', '')).toEqual([]);
+  });
+
+  it('finds a word by its Cyrillic', () => {
+    expect(quickAddMatches(deck, 'пат', '').map((card) => card.id)).toEqual(['1']);
+  });
+
+  it('finds it by the Latin it was typed in — the deck stores neither', () => {
+    expect(quickAddMatches(deck, 'patike', '').map((card) => card.id)).toEqual(['1']);
+  });
+
+  it('finds it by the English, which is how he learns the deck already had it', () => {
+    expect(quickAddMatches(deck, '', 'trainers').map((card) => card.id)).toEqual(['1']);
+  });
+
+  it('searches both boxes, Serbian first, without repeating a card', () => {
+    const ids = quickAddMatches(deck, 'па', 'slippers').map((card) => card.id);
+    expect(ids).toEqual(['1', '3']);
+  });
+
+  it('shows no more than the cap', () => {
+    const many = Array.from({ length: 20 }, (_, index) => ({
+      id: String(index),
+      sr_cyr: `папуча${index}`,
+      en: 'slipper',
+    }));
+    expect(quickAddMatches(many, 'папуч', '')).toHaveLength(5);
+    expect(quickAddMatches(many, 'папуч', '', 2)).toHaveLength(2);
   });
 });
 

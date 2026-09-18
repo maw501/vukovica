@@ -14,6 +14,7 @@
  */
 
 import { toCyrillicHeadword } from '@/lib/cardInput';
+import { filterCards, type SearchableCard } from '@/lib/search';
 
 /**
  * The name of `public.quick_add_word`.
@@ -102,4 +103,57 @@ export function canQuickAdd(sr: string, en: string): boolean {
  */
 export function quickAddConfirmation(srCyr: string, en: string): string {
   return `${srCyr} — ${en}`;
+}
+
+// ---------------------------------------------------------------------------
+// What the deck already has
+// ---------------------------------------------------------------------------
+
+/**
+ * How much has to be typed before the screen starts suggesting, and how many
+ * suggestions it shows.
+ *
+ * One or two letters match half the deck, and a list that long under the box
+ * being typed into is noise rather than help. Five is what fits above the
+ * keyboard on a phone.
+ */
+export const QUICK_ADD_MATCH_MIN = 2;
+export const QUICK_ADD_MATCH_LIMIT = 5;
+
+/**
+ * The deck cards worth showing while the two boxes are being filled in.
+ *
+ * This is the half of the screen that is not about adding at all. The deck holds
+ * 724 words already, and Mark cannot be expected to remember which: typing
+ * "trainers" should show him that патике has been in there since the day he
+ * installed the app, and one tap puts it in My words without a duplicate card
+ * ever existing.
+ *
+ * Both boxes are searched, Serbian first, because either one may be the one he
+ * knows — he heard "патике" and is looking for its meaning, or he wants
+ * "trainers" and has no idea what the Serbian is. `filterCards` is the deck
+ * screen's own matcher (Cyrillic, its transliteration, or the English, folded so
+ * an English keyboard finds "ћао" by typing "cao"), so a match here and a match
+ * on the Deck screen are the same thing.
+ */
+export function quickAddMatches<T extends SearchableCard & { id: string }>(
+  cards: readonly T[],
+  sr: string,
+  en: string,
+  limit: number = QUICK_ADD_MATCH_LIMIT,
+): T[] {
+  const needles = [sr.trim(), en.trim()].filter((text) => text.length >= QUICK_ADD_MATCH_MIN);
+  if (needles.length === 0) return [];
+
+  const matches: T[] = [];
+  const seen = new Set<string>();
+  for (const needle of needles) {
+    for (const card of filterCards(cards, needle)) {
+      if (seen.has(card.id)) continue;
+      seen.add(card.id);
+      matches.push(card);
+      if (matches.length >= limit) return matches;
+    }
+  }
+  return matches;
 }

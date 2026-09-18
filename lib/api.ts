@@ -25,6 +25,7 @@ import { BUMP_GRAMMAR_STATS_FN, bumpGrammarStatsParams } from '@/lib/grammar';
 import { RATE_LETTER_FN, rateLetterParams } from '@/lib/letters';
 import { MARK_KNOWN_FN, markKnownParams, type LibraryEntry } from '@/lib/library';
 import { buildQueue } from '@/lib/queue';
+import { QUICK_ADD_FN, quickAddParams } from '@/lib/quickAdd';
 import { SUBMIT_REVIEW_FN, submitReviewParams } from '@/lib/reviewRpc';
 import { computeProgress, type Progress } from '@/lib/stages';
 import {
@@ -713,6 +714,32 @@ async function markKnown(cardId: string): Promise<UserCardRow> {
   // response that is not a row would corrupt the next answer rather than fail.
   if (!data || typeof data.card_id !== 'string') {
     throw new Error('The server did not return the saved card. The word may not be marked known.');
+  }
+  return data;
+}
+
+/**
+ * Quick add: a word and what it means, straight into My words.
+ *
+ * One RPC rather than `addCard` followed by `markKnown`, because the two writes
+ * must not come apart — a card with no `user_cards` row is a word the app thinks
+ * he has never met, which is the opposite of what the button says. It is also
+ * the call that copes with the word already being in the shared deck, which is
+ * half the point of the screen: "trainers" turns out to have been there as
+ * патике all along, and the card is used as it stands.
+ *
+ * Returns the card's id, whether it was inserted or found. The screen compares
+ * it against the deck it has already loaded to decide which of the two things to
+ * say.
+ */
+async function quickAddWord(sr: string, en: string): Promise<string> {
+  const { data, error } = await supabase.rpc(QUICK_ADD_FN, quickAddParams(sr, en));
+  if (error) throw error;
+  // The function returns a bare `uuid`, so PostgREST answers with the scalar.
+  // The screen navigates and reports on the strength of it, so a response that
+  // is not one is worth saying out loud rather than rendering as "undefined".
+  if (typeof data !== 'string') {
+    throw new Error('The server did not return the saved word. It may not have been added.');
   }
   return data;
 }
@@ -1613,6 +1640,7 @@ export const api = {
   deleteCard,
   getLibrary,
   markKnown,
+  quickAddWord,
   listDrillStats,
   recordDrillAttempts,
   listLetterCards,
