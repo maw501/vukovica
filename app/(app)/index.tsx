@@ -29,12 +29,13 @@ import type { Stage } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import { DAILY_GOAL } from '@/lib/xp';
 
-/** The ten places the dashboard can send the learner. */
+/** The eleven places the dashboard can send the learner. */
 type ActivityKey =
   | 'trainer'
   | 'letters'
   | 'alphabet'
   | 'review'
+  | 'read'
   | 'grammar'
   | 'reader'
   | 'books'
@@ -67,6 +68,11 @@ const ACTIVITIES: Record<ActivityKey, Activity> = {
     href: '/alphabet',
   },
   review: { label: 'Review', blurb: 'Today’s cards', href: '/review' },
+  read: {
+    label: 'Read it',
+    blurb: 'Read Cyrillic words by theme, as many times as you like',
+    href: '/read',
+  },
   grammar: {
     label: 'Grammar',
     blurb: 'Drill the endings of everyday phrases',
@@ -105,6 +111,9 @@ const ACTIVITY_ORDER: readonly ActivityKey[] = [
   'alphabet',
   'trainer',
   'review',
+  // Beside Review, because both are the Words stage: that one is what a word
+  // means, this one is being able to read it off the page.
+  'read',
   'grammar',
   'reader',
   'books',

@@ -139,9 +139,22 @@ export default function LibraryScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.headline} testID="library-headline">
-          {libraryHeadline(counts.known, counts.learning)}
-        </Text>
+        <View style={styles.headerRow}>
+          <Text style={styles.headline} testID="library-headline">
+            {libraryHeadline(counts.known, counts.learning)}
+          </Text>
+          {/* The other thing to do with a word you know: read it off the page.
+              Straight into the drill over these very words rather than to the
+              theme picker — this screen *is* the theme. */}
+          <Pressable
+            style={styles.readLink}
+            onPress={() => router.push('/read/run?theme=mine')}
+            accessibilityRole="button"
+            testID="library-read-link"
+          >
+            <Text style={styles.readLinkText}>Read it</Text>
+          </Pressable>
+        </View>
 
         <View style={styles.tabs}>
           {SECTIONS.map(({ key, label }) => (
@@ -324,6 +337,14 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
     gap: spacing.sm,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  readLink: { minHeight: touchTarget - 12, justifyContent: 'center', paddingHorizontal: spacing.xs },
+  readLinkText: { color: colors.primary, fontSize: 16, fontWeight: '600' },
   headline: { fontSize: 15, color: colors.text, fontWeight: '600' },
   tabs: { flexDirection: 'row', gap: spacing.sm },
   tab: {
