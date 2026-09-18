@@ -129,7 +129,8 @@ app/                 expo-router routes
   (app)/story/[id].tsx reading view: tappable words, gloss sheet, "Finished"
   (app)/books.tsx      the shelf; add a book from photographs
   (app)/book/[id].tsx  reading view, a page at a time
-  (app)/deck.tsx       browse / search / edit / add
+  (app)/deck.tsx       browse / search / edit / the long add form
+  (app)/add.tsx        quick add: two boxes, straight into My words
   (app)/library.tsx    My words: known / still learning, searchable
   (app)/requests.tsx   the capture queue
   (app)/progress.tsx   streak record, XP, every ladder
@@ -195,13 +196,21 @@ tutor and are no longer read or written by anything. They are harmless, and
 dropping them is a migration nobody has needed yet.
 
 Every table carries explicit `GRANT`s; Supabase no longer adds them for you.
-Five RPCs keep a write that spans two rows — or that has to read the row it
+Six RPCs keep a write that spans two rows — or that has to read the row it
 writes — in one transaction: `submit_review` (card state and its log),
 `bump_drill_stats` and `bump_grammar_stats` (per-letter and per-topic counters),
-`rate_letter` (a letter's tally and the XP it earns) and `mark_known` ("I already
-know this", which parks a word as known and pays no XP at all). Every one is
-`security invoker` with `execute` granted to `authenticated` alone and `user_id`
-taken from `auth.uid()`, so a caller can only ever write its own rows.
+`rate_letter` (a letter's tally and the XP it earns), `mark_known` ("I already
+know this", which parks a word as known and pays no XP at all) and
+`quick_add_word` (the card and that same claim, from two boxes on `/add`; it
+reuses the deck's card if the word is already there and calls `mark_known`
+itself). Every one is `security invoker` with `execute` granted to
+`authenticated` alone and `user_id` taken from `auth.uid()`, so a caller can only
+ever write its own rows.
+
+`cards.pos`, `cards.example_cyr` and `cards.example_en` default to the empty
+string, which is how a quick-added card says "not filled in yet" while staying
+`not null`. Every screen that prints those fields hides the line when it is
+blank; the content is filled in by a backfill between sessions.
 
 XP is otherwise not transactional: `xp_events` is an append-only ledger written
 by a plain client insert under its own policy, and a lost point is not worth a

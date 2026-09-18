@@ -487,6 +487,7 @@ Against the production domain, in a browser:
 | `/requests` | the queue, and filing one works |
 | `/progress` | streak, XP, level, ladders |
 | `/deck` | search finds a card in all three scripts |
+| `/add` | type a Latin word: the Cyrillic shows under the box; matches appear from two letters on; "Add to my words" clears the form and confirms, and the word is in `/library` |
 | `/.env.local` | **404** — nothing from the repo root is served |
 | Sign-out screen | **no** Create account button |
 
