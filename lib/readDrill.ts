@@ -23,12 +23,13 @@
  * here, over rows the caller has already fetched.
  */
 
-import { domainLabel } from '@/lib/domains';
+import { domainLabel } from "@/lib/domains";
 // The shuffle is the letters drill's, taken rather than copied: it is a plain
 // Fisher–Yates over a copy with an injected random source, and two of them would
 // be two things to keep right. Nothing else crosses between the two drills.
-import { shuffle, type Rng } from '@/lib/letters';
-import type { CardRow, ReadStatRow } from '@/lib/types';
+import { shuffle, type Rng } from "@/lib/letters";
+import type { CardRow, ReadStatRow } from "@/lib/types";
+import { QUICK_ADD_DOMAIN } from "@/lib/quickAdd";
 
 /**
  * Read right this many times in a row and the word is solid: a count on the
@@ -53,10 +54,10 @@ export const READ_SOLID_STREAK = 3;
 export const READ_RUN_SIZE = 20;
 
 /** The pseudo-theme that means "the words I already know", not a `cards.domain`. */
-export const MINE_THEME = 'mine';
+export const MINE_THEME = "mine";
 
 /** What "My words" is called on screen. */
-const MINE_LABEL = 'My words';
+const MINE_LABEL = "My words";
 
 /** One word's tally, as everything below needs it. */
 export interface ReadStat {
@@ -79,7 +80,9 @@ export const UNRATED_READ: ReadStat = { easy: 0, hard: 0, streak: 0 };
  * columns are nullable in the row type (a `select` can return null for any of
  * them) and a total function is one less thing for the screen to think about.
  */
-export function statsByCard(rows: readonly ReadStatRow[]): Map<string, ReadStat> {
+export function statsByCard(
+  rows: readonly ReadStatRow[],
+): Map<string, ReadStat> {
   const stats = new Map<string, ReadStat>();
   for (const row of rows) {
     if (!row.card_id) continue;
@@ -97,7 +100,10 @@ function nonNegative(value: number | null | undefined): number {
 }
 
 /** This word's tally, or a blank one for a word never read here. */
-export function statFor(card: CardRow, stats: ReadonlyMap<string, ReadStat>): ReadStat {
+export function statFor(
+  card: CardRow,
+  stats: ReadonlyMap<string, ReadStat>,
+): ReadStat {
   return stats.get(card.id) ?? UNRATED_READ;
 }
 
@@ -185,8 +191,8 @@ export function buildRun({
 
 /** `"<group>:<streak>"` keys, both numbers ascending. */
 function compareBucketKeys(a: string, b: string): number {
-  const [aGroup, aStreak] = a.split(':').map(Number);
-  const [bGroup, bStreak] = b.split(':').map(Number);
+  const [aGroup, aStreak] = a.split(":").map(Number);
+  const [bGroup, bStreak] = b.split(":").map(Number);
   return aGroup - bGroup || aStreak - bStreak;
 }
 
@@ -222,10 +228,10 @@ export interface RunTally {
 export function runSummary({ gotIt, notYet }: RunTally): string {
   const total = Math.max(0, gotIt) + Math.max(0, notYet);
   return [
-    `${total} ${total === 1 ? 'word' : 'words'}`,
+    `${total} ${total === 1 ? "word" : "words"}`,
     `${Math.max(0, gotIt)} got it`,
     `${Math.max(0, notYet)} not yet`,
-  ].join(' · ');
+  ].join(" · ");
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +279,10 @@ export function buildThemes({
     if (knownIds.has(card.id)) mine.push(card);
 
     const domain = domainOf(card);
-    if (!domain) continue;
+    // Quick-added words are filed under `my-words` and are known by
+    // construction, so they are already in the "My words" theme above. Offering
+    // the domain as well would list "My words" twice with different counts.
+    if (!domain || domain === QUICK_ADD_DOMAIN) continue;
     const bucket = byDomain.get(domain);
     if (bucket) bucket.push(card);
     else byDomain.set(domain, [card]);
@@ -309,7 +318,8 @@ export function themeCards({
   cards: readonly CardRow[];
   knownIds?: ReadonlySet<string>;
 }): CardRow[] {
-  if (theme === MINE_THEME) return cards.filter((card) => knownIds.has(card.id));
+  if (theme === MINE_THEME)
+    return cards.filter((card) => knownIds.has(card.id));
   const wanted = theme.trim();
   return cards.filter((card) => domainOf(card) === wanted);
 }
@@ -323,7 +333,7 @@ export function themeCards({
  * that theoretical today, which is exactly when it is cheap to make impossible.
  */
 function domainOf(card: CardRow): string {
-  return card.domain?.trim() ?? '';
+  return card.domain?.trim() ?? "";
 }
 
 /** A theme's name for the top of the drill. */
@@ -343,7 +353,7 @@ export function themeLabel(theme: string): string {
  * it: rename one side and PostgREST answers 404 at runtime. `readDrill.test.ts`
  * parses the migration and compares, which is what stops that happening.
  */
-export const RATE_READ_FN = 'rate_read';
+export const RATE_READ_FN = "rate_read";
 
 export interface RateReadParams {
   p_card_id: string;
