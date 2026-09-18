@@ -109,16 +109,20 @@ export default function AddScreen() {
   }, []);
 
   const add = useMutation({
-    mutationFn: () => api.quickAddWord(sr, en),
-    onSuccess: (cardId) => {
+    // What was sent travels with the request rather than being read back out of
+    // the boxes when it returns: the boxes are cleared on success, and typing
+    // the next word during a slow round trip would otherwise confirm that one.
+    mutationFn: async () => ({
+      cardId: await api.quickAddWord(sr, en),
+      sent: quickAddConfirmation(headword, en.trim()),
+    }),
+    onSuccess: ({ cardId, sent }) => {
       // The card the RPC settled on. If the deck already held it, the word was
       // in the app before this tap — which is worth saying, because it means the
       // English on the card is the deck's, not what was just typed.
       const existing = (cards.data ?? []).find((card) => card.id === cardId);
       setConfirmed({
-        word: existing
-          ? quickAddConfirmation(existing.sr_cyr, existing.en)
-          : quickAddConfirmation(headword, en.trim()),
+        word: existing ? quickAddConfirmation(existing.sr_cyr, existing.en) : sent,
         existed: Boolean(existing),
       });
       refresh();
