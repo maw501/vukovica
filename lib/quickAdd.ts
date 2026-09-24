@@ -227,3 +227,56 @@ export function quickAddMatches<T extends SearchableCard & { id: string }>(
   }
   return matches;
 }
+
+// ---------------------------------------------------------------------------
+// When he does not know the Serbian
+// ---------------------------------------------------------------------------
+
+/**
+ * What the one button does: add the word, or ask for it.
+ *
+ * Requests used to be a tile of its own on the home screen, and the question it
+ * takes — "how do I say trainers?" — is the same kitchen-table moment this
+ * screen is for, just with the Serbian missing. So an empty Serbian box and a
+ * filled English one is a request rather than an error: the English is filed in
+ * the capture queue (`api.createRequest`) and a card comes back between
+ * sessions.
+ *
+ * The Serbian box is read through `toCyrillicHeadword`, as `quickAddErrors`
+ * reads it, so the two can never disagree about whether it is empty. Both boxes
+ * empty is still `add`: pressing the button then shows the two "type this"
+ * messages, which is the right answer to a button pressed on nothing.
+ */
+export type QuickAddAction = 'add' | 'request';
+
+export function quickAddAction(sr: string, en: string): QuickAddAction {
+  return toCyrillicHeadword(sr) === '' && en.trim() !== '' ? 'request' : 'add';
+}
+
+/**
+ * The per-box messages the screen should show right now.
+ *
+ * `quickAddErrors` less anything the other path makes moot: while the button
+ * is asking for the Serbian, an empty Serbian box is the point, and "Type the
+ * Serbian word." above a button offering to ask for it would tell him to do
+ * the opposite of what the screen has just offered. The screen reveals these
+ * only after a failed attempt, and that flag outlives the attempt — so the
+ * mode has to be applied here, on every render, not at the moment of failure.
+ */
+export function quickAddShownErrors(
+  sr: string,
+  en: string,
+): Partial<Record<QuickAddField, string>> {
+  return quickAddAction(sr, en) === 'request' ? {} : quickAddErrors(sr, en);
+}
+
+/**
+ * The line under the boxes once a request is filed.
+ *
+ * It says where the question now lives — the "Asked for" list in My words —
+ * because a request is answered between sessions, and "asked" with no word of
+ * what happens next reads as nothing having happened.
+ */
+export function requestConfirmation(en: string): string {
+  return `Asked for: ${en.trim()}. It’ll show up in My words under “Asked for” until the Serbian is added.`;
+}
