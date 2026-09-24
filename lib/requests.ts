@@ -40,3 +40,15 @@ export function readerRequestText(word: string, sentence: string): string {
   const context = sentence.trim();
   return context === '' ? quoted : `${quoted} — in: ${context}`;
 }
+
+/**
+ * The requests still waiting for an answer, in the order they came.
+ *
+ * What My words shows under "Asked for": the queue is answered between
+ * sessions, and the useful thing to see beside the words he has is the ones he
+ * has asked for and does not have yet. Answered ones are left to the full
+ * Requests screen, where each sits beside the card that answered it.
+ */
+export function pendingRequests<T extends { status: string }>(rows: readonly T[]): T[] {
+  return rows.filter((row) => row.status === 'pending');
+}

@@ -227,3 +227,39 @@ export function quickAddMatches<T extends SearchableCard & { id: string }>(
   }
   return matches;
 }
+
+// ---------------------------------------------------------------------------
+// When he does not know the Serbian
+// ---------------------------------------------------------------------------
+
+/**
+ * What the one button does: add the word, or ask for it.
+ *
+ * Requests used to be a tile of its own on the home screen, and the question it
+ * takes — "how do I say trainers?" — is the same kitchen-table moment this
+ * screen is for, just with the Serbian missing. So an empty Serbian box and a
+ * filled English one is a request rather than an error: the English is filed in
+ * the capture queue (`api.createRequest`) and a card comes back between
+ * sessions.
+ *
+ * The Serbian box is read through `toCyrillicHeadword`, as `quickAddErrors`
+ * reads it, so the two can never disagree about whether it is empty. Both boxes
+ * empty is still `add`: pressing the button then shows the two "type this"
+ * messages, which is the right answer to a button pressed on nothing.
+ */
+export type QuickAddAction = 'add' | 'request';
+
+export function quickAddAction(sr: string, en: string): QuickAddAction {
+  return toCyrillicHeadword(sr) === '' && en.trim() !== '' ? 'request' : 'add';
+}
+
+/**
+ * The line under the boxes once a request is filed.
+ *
+ * It says where the question now lives — the "Asked for" list in My words —
+ * because a request is answered between sessions, and "asked" with no word of
+ * what happens next reads as nothing having happened.
+ */
+export function requestConfirmation(en: string): string {
+  return `Asked for: ${en.trim()}. It’ll show up in My words under “Asked for” until the Serbian is added.`;
+}

@@ -11,7 +11,9 @@ import {
   quickAddErrorMessage,
   quickAddErrors,
   quickAddMatches,
+  quickAddAction,
   quickAddParams,
+  requestConfirmation,
   QUICK_ADD_DOMAIN,
   QUICK_ADD_FAILED,
   QUICK_ADD_FN,
@@ -204,6 +206,41 @@ describe('quickAddMatches', () => {
 describe('QUICK_ADD_DOMAIN', () => {
   it('is one of the domains the long form offers, so a card can be moved out of it', () => {
     expect(CARD_DOMAINS).toContain(QUICK_ADD_DOMAIN);
+  });
+});
+
+describe('quickAddAction', () => {
+  it('adds the word when the Serbian is there', () => {
+    expect(quickAddAction('кашика', 'spoon')).toBe('add');
+    expect(quickAddAction('kasika', 'spoon')).toBe('add');
+    // A Serbian word with no English is still an add: the errors say what is
+    // missing, rather than the word being filed as a question.
+    expect(quickAddAction('кашика', '')).toBe('add');
+  });
+
+  it('asks for the Serbian when only the English is filled in', () => {
+    expect(quickAddAction('', 'trainers')).toBe('request');
+    expect(quickAddAction('   ', ' trainers ')).toBe('request');
+  });
+
+  it('adds (and so shows both messages) when both boxes are empty', () => {
+    expect(quickAddAction('', '')).toBe('add');
+    expect(quickAddAction(' ', '  ')).toBe('add');
+  });
+
+  it('agrees with quickAddErrors about what an empty Serbian box is', () => {
+    for (const sr of ['', '  ', '\t']) {
+      expect(quickAddErrors(sr, 'x').sr).toBeDefined();
+      expect(quickAddAction(sr, 'x')).toBe('request');
+    }
+  });
+});
+
+describe('requestConfirmation', () => {
+  it('names what was asked for, trimmed, and where it will be', () => {
+    expect(requestConfirmation('  trainers ')).toBe(
+      'Asked for: trainers. It’ll show up in My words under “Asked for” until the Serbian is added.',
+    );
   });
 });
 
