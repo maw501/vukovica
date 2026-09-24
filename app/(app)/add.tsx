@@ -49,7 +49,7 @@ import {
   canQuickAdd,
   quickAddConfirmation,
   quickAddErrorMessage,
-  quickAddErrors,
+  quickAddShownErrors,
   quickAddAction,
   quickAddMatches,
   requestConfirmation,
@@ -89,7 +89,7 @@ export default function AddScreen() {
     [cards.data, en, sr],
   );
 
-  const errors = quickAddErrors(sr, en);
+  const errors = quickAddShownErrors(sr, en);
   const action = quickAddAction(sr, en);
   const headword = toCyrillicHeadword(sr);
   /** Only worth showing when it is telling him something he did not type. */
@@ -192,13 +192,25 @@ export default function AddScreen() {
     onError: (error) => console.warn('create request failed:', errorMessage(error, 'no message')),
   });
 
+  /**
+   * A fresh attempt wipes the last one's outcome — its confirmation and all
+   * three mutations' errors — so an old failure from one path can never sit
+   * over (and hide) a new failure from another.
+   */
+  const clearOutcome = () => {
+    setConfirmed(null);
+    add.reset();
+    markKnown.reset();
+    ask.reset();
+  };
+
   const submit = () => {
     // The button is disabled while a write is in flight; Enter in the English
     // box is not, and two quick presses on a slow connection would be two round
     // trips and two confirmations.
     if (busy) return;
     if (action === 'request') {
-      setConfirmed(null);
+      clearOutcome();
       ask.mutate();
       return;
     }
@@ -206,7 +218,7 @@ export default function AddScreen() {
       setShowErrors(true);
       return;
     }
-    setConfirmed(null);
+    clearOutcome();
     add.mutate();
   };
 
@@ -232,7 +244,7 @@ export default function AddScreen() {
           known={knownIds.has(card.id)}
           busy={busy}
           onPress={() => {
-            setConfirmed(null);
+            clearOutcome();
             markKnown.mutate({ card, known: knownIds.has(card.id) });
           }}
         />

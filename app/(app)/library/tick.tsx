@@ -18,7 +18,12 @@
  * in a few months, where a wrong answer puts it back into learning.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -140,7 +145,9 @@ function ThemeList({
  * into the `['library']` cache (`withMarkedKnown`) rather than refetching all of
  * My words per tap — this screen is tapped at speed. The counts elsewhere in the
  * app (home, progress, the review queue, the Read it picker) are marked stale
- * once, when he leaves, rather than refetched after every word.
+ * once, when he leaves, rather than refetched after every word — and a tick
+ * that lands *after* he has left (tap the last word, press back straight away)
+ * marks them stale itself, since there is no leaving left to do it.
  */
 function ThemeWords({
   theme,
@@ -161,17 +168,20 @@ function ThemeWords({
   const [failure, setFailure] = useState<string | null>(null);
   /** Whether anything was ticked, so leaving knows whether to refresh the counts. */
   const dirty = useRef(false);
+  /**
+   * Whether the screen is still up. The mutation's options-level `onSuccess`
+   * outlives the screen, so a write still in flight when he leaves lands after
+   * the cleanup below has already run and found nothing to refresh.
+   */
+  const mounted = useRef(true);
 
-  useEffect(
-    () => () => {
-      if (!dirty.current) return;
-      void queryClient.invalidateQueries({ queryKey: ['progress'] });
-      void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      void queryClient.invalidateQueries({ queryKey: ['queue'] });
-      void queryClient.invalidateQueries({ queryKey: ['read-themes'] });
-    },
-    [queryClient],
-  );
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (dirty.current) refreshCounts(queryClient);
+    };
+  }, [queryClient]);
 
   const tick = useMutation({
     mutationFn: (card: CardRow) => api.markKnown(card.id),
@@ -182,10 +192,13 @@ function ThemeWords({
       setInFlight((current) => new Set(current).add(card.id));
     },
     onSuccess: (row, card) => {
-      dirty.current = true;
       queryClient.setQueryData<LibraryEntry[]>(['library'], (current) =>
         withMarkedKnown(current, card, row),
       );
+      // Still here: leaving will refresh the counts once. Already gone: the
+      // cleanup has run, so this write refreshes them itself.
+      if (mounted.current) dirty.current = true;
+      else refreshCounts(queryClient);
     },
     onError: (error, card) => {
       console.warn('mark_known failed:', errorMessage(error, 'no message'));
@@ -271,6 +284,18 @@ function ThemeWords({
       }}
     />
   );
+}
+
+/**
+ * Every count that moves when a word becomes known, bar My words itself (which
+ * `withMarkedKnown` keeps exact). Marked stale rather than awaited: home is
+ * mounted underneath and refetches its own, and the rest refetch when opened.
+ */
+function refreshCounts(queryClient: QueryClient) {
+  void queryClient.invalidateQueries({ queryKey: ['progress'] });
+  void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  void queryClient.invalidateQueries({ queryKey: ['queue'] });
+  void queryClient.invalidateQueries({ queryKey: ['read-themes'] });
 }
 
 const styles = StyleSheet.create({

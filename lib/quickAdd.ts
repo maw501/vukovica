@@ -254,6 +254,23 @@ export function quickAddAction(sr: string, en: string): QuickAddAction {
 }
 
 /**
+ * The per-box messages the screen should show right now.
+ *
+ * `quickAddErrors` less anything the other path makes moot: while the button
+ * is asking for the Serbian, an empty Serbian box is the point, and "Type the
+ * Serbian word." above a button offering to ask for it would tell him to do
+ * the opposite of what the screen has just offered. The screen reveals these
+ * only after a failed attempt, and that flag outlives the attempt — so the
+ * mode has to be applied here, on every render, not at the moment of failure.
+ */
+export function quickAddShownErrors(
+  sr: string,
+  en: string,
+): Partial<Record<QuickAddField, string>> {
+  return quickAddAction(sr, en) === 'request' ? {} : quickAddErrors(sr, en);
+}
+
+/**
  * The line under the boxes once a request is filed.
  *
  * It says where the question now lives — the "Asked for" list in My words —

@@ -113,6 +113,11 @@ export default function LibraryScreen() {
   const [query, setQuery] = useState("");
   /** The one row expanded to show its example sentence, if any. */
   const [openId, setOpenId] = useState<string | null>(null);
+  /**
+   * Set when he asks to see the words he is still learning from the
+   * nothing-known-yet screen, which otherwise stands in for the list.
+   */
+  const [listAnyway, setListAnyway] = useState(false);
 
   const entries = useMemo(() => library.data ?? [], [library.data]);
   // Partitioned once: the two counts are the two lengths, so there is no reason
@@ -159,9 +164,11 @@ export default function LibraryScreen() {
     );
   }
 
-  // Nothing known at all — which is where Mark starts. The first job is
-  // ticking the words he already knows, so that leads; adding one is second.
-  if (entries.length === 0) {
+  // Nothing known — which is where Mark starts. The first job is ticking the
+  // words he already knows, so that leads; adding one is second. Keyed on
+  // known words rather than on rows: words part-way through Practise are not
+  // what this screen is for, but they stay one tap away below.
+  if (counts.known === 0 && !listAnyway) {
     return (
       <ScrollView
         contentContainerStyle={styles.emptyScroll}
@@ -192,6 +199,21 @@ export default function LibraryScreen() {
           >
             <Text style={styles.textButtonLabel}>+ Add a word</Text>
           </Pressable>
+          {counts.learning > 0 ? (
+            <Pressable
+              style={styles.textButton}
+              onPress={() => {
+                setSection("learning");
+                setListAnyway(true);
+              }}
+              accessibilityRole="button"
+              testID="library-learning-empty"
+            >
+              <Text style={styles.textButtonLabel}>
+                {`See the ${counts.learning} ${counts.learning === 1 ? "word" : "words"} you are still learning`}
+              </Text>
+            </Pressable>
+          ) : null}
           <AskedFor
             rows={requests.data}
             failed={requests.isError}

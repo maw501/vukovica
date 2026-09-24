@@ -13,6 +13,7 @@ import {
   quickAddMatches,
   quickAddAction,
   quickAddParams,
+  quickAddShownErrors,
   requestConfirmation,
   QUICK_ADD_DOMAIN,
   QUICK_ADD_FAILED,
@@ -233,6 +234,25 @@ describe('quickAddAction', () => {
       expect(quickAddErrors(sr, 'x').sr).toBeDefined();
       expect(quickAddAction(sr, 'x')).toBe('request');
     }
+  });
+});
+
+describe('quickAddShownErrors', () => {
+  it('shows nothing while asking — an empty Serbian box is the point then', () => {
+    expect(quickAddShownErrors('', 'trainers')).toEqual({});
+  });
+
+  it('is exactly quickAddErrors while adding', () => {
+    for (const [sr, en] of [
+      ['', ''],
+      ['кашика', ''],
+      ['кasika', 'spoon'],
+      ['кашика', 'spoon'],
+    ]) {
+      expect(quickAddShownErrors(sr, en)).toEqual(quickAddErrors(sr, en));
+    }
+    // Both empty is an add, so both messages still show after a press.
+    expect(Object.keys(quickAddShownErrors('', '')).sort()).toEqual(['en', 'sr']);
   });
 });
 
