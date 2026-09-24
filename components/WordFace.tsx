@@ -103,7 +103,9 @@ const styles = StyleSheet.create({
   word: { fontSize: 52, lineHeight: 68, fontWeight: '700', textAlign: 'center' },
   // Smaller than the Cyrillic: an English gloss is often several words
   // ("to be in a hurry") where a headword is one.
-  prompt: { fontSize: 32, lineHeight: 42, fontWeight: '700', textAlign: 'center' },
+  // Full-strength, not the muted English grey: on a Meaning card the English is
+  // the question itself, not a secondary line under the Serbian.
+  prompt: { fontSize: 32, lineHeight: 42, fontWeight: '700', textAlign: 'center', color: colors.text },
   answer: { alignItems: 'center', gap: spacing.xs, alignSelf: 'stretch' },
   gloss: { fontSize: 20, textAlign: 'center' },
   latin: { fontSize: 22, fontWeight: '600', textAlign: 'center' },

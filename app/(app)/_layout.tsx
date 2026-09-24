@@ -54,8 +54,15 @@ export default function AppLayout() {
         <Stack.Screen name="more" options={{ title: 'More' }} />
         <Stack.Screen name="read" options={{ title: 'Read it' }} />
         {/* The theme is named on the screen itself, under the progress
-            line, so the header stays the name of the drill. */}
-        <Stack.Screen name="read/run" options={{ title: 'Read aloud' }} />
+            line, so the header stays the name of the drill. Set here from the
+            URL rather than by the screen, so "Read aloud" never flashes up
+            before "Meaning". */}
+        <Stack.Screen
+          name="read/run"
+          options={({ route }) => ({
+            title: (route.params as { way?: string } | undefined)?.way === 'meaning' ? 'Meaning' : 'Read aloud',
+          })}
+        />
         <Stack.Screen name="trainer" options={{ title: 'Write it' }} />
         <Stack.Screen name="practise" options={{ title: 'Practise' }} />
         <Stack.Screen name="reader" options={{ title: 'Reader' }} />

@@ -29,7 +29,7 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -75,7 +75,6 @@ const ANSWER_SETTLE_MS = 250;
 
 export default function ReadRunScreen() {
   const router = useRouter();
-  const navigation = useNavigation();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{ theme?: string; way?: string }>();
   const way = parseDrillWay(params.way);
@@ -276,11 +275,6 @@ export default function ReadRunScreen() {
     if (!revealed || !ttsEnabled || !card?.audio_path) return;
     void playAudioPath(card.audio_path);
   }, [card?.audio_path, revealed, ttsEnabled]);
-
-  // The layout names this screen "Read aloud"; Meaning is picked by that name.
-  useEffect(() => {
-    if (meaning) navigation.setOptions({ title: 'Meaning' });
-  }, [meaning, navigation]);
 
   // The error branch comes FIRST, deliberately. A failed query is no longer
   // pending, but the effect above will not build a run without its data, so

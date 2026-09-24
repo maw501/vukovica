@@ -10,14 +10,14 @@ leads with:
 | Stage        | Goal                           | Its activity      |
 | ------------ | ------------------------------ | ----------------- |
 | **Alphabet** | master all 30 Cyrillic letters | Letters + Trainer |
-| **Words**    | 100 → 300 → 600 known words    | Review            |
+| **Words**    | 100 → 300 → 600 known words    | Practise          |
 | **Reading**  | 1 → 5 → 20 stories finished    | Reader            |
 | **Books**    | read a real book with his son  | Books             |
 
 The stages are **soft**: nothing is ever locked. A stage only sets the
 dashboard's emphasis — the stage name, one goal line and the primary button —
-and every other activity keeps a row underneath, in stage order. Reviews stay on
-screen at every stage, because they are the daily habit rather than a stage.
+and every other activity keeps a row underneath, in stage order. Practise stays
+on screen at every stage, because it is the daily habit rather than a stage.
 
 **No AI at runtime.** Phase 3 removed every Edge Function and every model call.
 Everything the app shows is either seeded content, something Mark wrote, or
@@ -235,7 +235,7 @@ know this", which parks a word as known and pays no XP at all) and
 `quick_add_word` (the card and that same claim, from two boxes on `/add`; it
 reuses the deck's card if the word is already there and calls `mark_known`
 itself). Every one is `security invoker` with `execute` granted to
-`authenticated` alone and `user_id` taken from `auth.uid()`, so a caller can only
+`authenticated` (and `service_role`) and `user_id` taken from `auth.uid()`, so a caller can only
 ever write its own rows.
 
 `cards.pos`, `cards.example_cyr` and `cards.example_en` default to the empty

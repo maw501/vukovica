@@ -942,9 +942,12 @@ async function listReadStats(): Promise<ReadStatRow[]> {
     const { data, error } = await supabase
       .from("read_stats")
       .select("*")
-      // Redundant under RLS, but it is what makes this a primary-key range.
+      // Redundant under RLS, but it scopes the range to one user's key.
       .eq("user_id", userId)
+      // A word can have a row per way, so ordering by card alone leaves the
+      // pair's order open at a page edge and one row can be skipped or repeated.
       .order("card_id", { ascending: true })
+      .order("way", { ascending: true })
       .range(from, from + READ_STATS_PAGE_SIZE - 1)
       .returns<ReadStatRow[]>();
     if (error) throw error;
