@@ -15,6 +15,14 @@
  * along, and one tap puts it in My words rather than making a second card for
  * the same word.
  *
+ * The third case is not knowing the Serbian at all. Leave that box empty, type
+ * the English, and the button becomes "Ask for the Serbian": the English is
+ * filed in the capture queue (`api.createRequest`, the Requests screen's own
+ * call) and answered between sessions. That used to be a home tile of its own;
+ * it is the same moment at the kitchen table, so it is the same screen. The
+ * deck matches still come first — shown above the button in that case — so a
+ * word the deck already has is ticked rather than asked for.
+ *
  * The long form is not gone — some words do want an example sentence — it is a
  * quiet link at the bottom.
  */
@@ -42,14 +50,13 @@ import {
   quickAddConfirmation,
   quickAddErrorMessage,
   quickAddErrors,
+  quickAddAction,
   quickAddMatches,
+  requestConfirmation,
 } from '@/lib/quickAdd';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import { cyrToLat } from '@/lib/transliterate';
 import type { CardRow } from '@/lib/types';
-
-/** The one line under the boxes after a word lands, and which of the two it is. */
-type Confirmation = { word: string; existed: boolean };
 
 export default function AddScreen() {
   const router = useRouter();
@@ -59,7 +66,8 @@ export default function AddScreen() {
   const [en, setEn] = useState('');
   /** Errors are for after a failed attempt, not for every keystroke of the first. */
   const [showErrors, setShowErrors] = useState(false);
-  const [confirmed, setConfirmed] = useState<Confirmation | null>(null);
+  /** The one line under the boxes after a word lands or a request is filed. */
+  const [confirmed, setConfirmed] = useState<string | null>(null);
 
   const srInput = useRef<TextInput>(null);
 
@@ -82,6 +90,7 @@ export default function AddScreen() {
   );
 
   const errors = quickAddErrors(sr, en);
+  const action = quickAddAction(sr, en);
   const headword = toCyrillicHeadword(sr);
   /** Only worth showing when it is telling him something he did not type. */
   const converted = headword !== '' && headword !== sr.trim() ? headword : null;
@@ -128,11 +137,14 @@ export default function AddScreen() {
       const existing = result.created
         ? undefined
         : (cards.data ?? []).find((card) => card.id === result.card_id);
-      setConfirmed({
-        word: existing ? quickAddConfirmation(existing.sr_cyr, existing.en) : sent,
-        existed: !result.created,
-      });
+      const word = existing ? quickAddConfirmation(existing.sr_cyr, existing.en) : sent;
+      setConfirmed(
+        result.created
+          ? `Added to My words: ${word}`
+          : `Already in the deck, now in My words: ${word}`,
+      );
       markKnown.reset();
+      ask.reset();
       refresh();
       startAgain();
     },
@@ -145,17 +157,39 @@ export default function AddScreen() {
   const markKnown = useMutation({
     mutationFn: (match: { card: CardRow; known: boolean }) => api.markKnown(match.card.id),
     onSuccess: (_row, { card, known }) => {
-      setConfirmed({
-        word: quickAddConfirmation(card.sr_cyr, card.en),
-        // A row wearing the "In my words" chip was there before the tap, so it
-        // gets the same sentence a word the deck already had gets.
-        existed: known,
-      });
+      const word = quickAddConfirmation(card.sr_cyr, card.en);
+      // A row wearing the "In my words" chip was there before the tap, so it
+      // gets the same sentence a word the deck already had gets.
+      setConfirmed(
+        known ? `Already in the deck, now in My words: ${word}` : `Added to My words: ${word}`,
+      );
       add.reset();
+      ask.reset();
       refresh();
       startAgain();
     },
     onError: (error) => console.warn('mark_known failed:', errorMessage(error, 'no message')),
+  });
+
+  /**
+   * No Serbian, just the English: file it as a request. What was asked travels
+   * with the call for the reason `add`'s does — the box is cleared on success.
+   */
+  const ask = useMutation({
+    mutationFn: async () => {
+      const text = en.trim();
+      await api.createRequest({ text_en: text, source: 'typed' });
+      return text;
+    },
+    onSuccess: (text) => {
+      setConfirmed(requestConfirmation(text));
+      add.reset();
+      markKnown.reset();
+      // My words' "Asked for" list and the Requests screen both read this key.
+      void queryClient.invalidateQueries({ queryKey: ['requests'] });
+      startAgain();
+    },
+    onError: (error) => console.warn('create request failed:', errorMessage(error, 'no message')),
   });
 
   const submit = () => {
@@ -163,6 +197,11 @@ export default function AddScreen() {
     // box is not, and two quick presses on a slow connection would be two round
     // trips and two confirmations.
     if (busy) return;
+    if (action === 'request') {
+      setConfirmed(null);
+      ask.mutate();
+      return;
+    }
     if (!canQuickAdd(sr, en)) {
       setShowErrors(true);
       return;
@@ -171,13 +210,43 @@ export default function AddScreen() {
     add.mutate();
   };
 
-  const busy = add.isPending || markKnown.isPending;
+  const busy = add.isPending || markKnown.isPending || ask.isPending;
   const failure = add.error ?? markKnown.error;
+
+  /**
+   * The deck's matches. Below the button while adding, where they are a
+   * suggestion; above it while asking, because a word the deck already has
+   * should be found before it is asked for.
+   */
+  const matchList = cards.isPending ? (
+    <ActivityIndicator color={colors.primary} style={styles.loading} />
+  ) : matches.length > 0 ? (
+    <View style={styles.matches} testID="add-matches">
+      <Text style={styles.matchesLabel}>
+        {action === 'request' ? 'Already in the deck — tap one you know' : 'Already in the deck'}
+      </Text>
+      {matches.map((card) => (
+        <MatchRow
+          key={card.id}
+          card={card}
+          known={knownIds.has(card.id)}
+          busy={busy}
+          onPress={() => {
+            setConfirmed(null);
+            markKnown.mutate({ card, known: knownIds.has(card.id) });
+          }}
+        />
+      ))}
+    </View>
+  ) : null;
 
   return (
     <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
       <View style={styles.content}>
         <Text style={styles.title}>Add a word</Text>
+        <Text style={styles.hint}>
+          Don’t know the Serbian? Leave it empty, type the English, and ask for it.
+        </Text>
 
         <View style={styles.field}>
           <Text style={styles.label}>Serbian</Text>
@@ -227,6 +296,8 @@ export default function AddScreen() {
           ) : null}
         </View>
 
+        {action === 'request' ? matchList : null}
+
         <Pressable
           style={({ pressed }) => [
             styles.primaryButton,
@@ -239,7 +310,13 @@ export default function AddScreen() {
           testID="add-submit"
         >
           <Text style={styles.primaryButtonText}>
-            {add.isPending ? 'Adding…' : 'Add to my words'}
+            {add.isPending
+              ? 'Adding…'
+              : ask.isPending
+                ? 'Asking…'
+                : action === 'request'
+                  ? 'Ask for the Serbian'
+                  : 'Add to my words'}
           </Text>
         </Pressable>
 
@@ -247,35 +324,19 @@ export default function AddScreen() {
           <Text style={styles.error} testID="add-error">
             {quickAddErrorMessage(failure)}
           </Text>
+        ) : ask.isError ? (
+          <Text style={styles.error} testID="add-error">
+            Couldn’t send that. Try again.
+          </Text>
         ) : null}
 
         {confirmed ? (
           <MixedText style={styles.confirmation} testID="add-confirmation">
-            {confirmed.existed
-              ? `Already in the deck, now in My words: ${confirmed.word}`
-              : `Added to My words: ${confirmed.word}`}
+            {confirmed}
           </MixedText>
         ) : null}
 
-        {cards.isPending ? (
-          <ActivityIndicator color={colors.primary} style={styles.loading} />
-        ) : matches.length > 0 ? (
-          <View style={styles.matches} testID="add-matches">
-            <Text style={styles.matchesLabel}>Already in the deck</Text>
-            {matches.map((card) => (
-              <MatchRow
-                key={card.id}
-                card={card}
-                known={knownIds.has(card.id)}
-                busy={busy}
-                onPress={() => {
-                  setConfirmed(null);
-                  markKnown.mutate({ card, known: knownIds.has(card.id) });
-                }}
-              />
-            ))}
-          </View>
-        ) : null}
+        {action === 'request' ? null : matchList}
 
         <Pressable
           style={styles.textButton}
@@ -348,6 +409,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   title: { fontSize: 26, fontWeight: '700', color: colors.text },
+  hint: { fontSize: 14, color: colors.textMuted, marginTop: -spacing.sm },
   field: { gap: spacing.xs },
   label: { fontSize: 14, fontWeight: '600', color: colors.text },
   input: {

@@ -12,26 +12,32 @@
  * number at the top of this screen and the number in "learn 42 more words" can
  * never disagree. Still learning is everything else with a row.
  *
- * Read-only, deliberately. Editing and deleting a card live on the Deck screen
- * and stay there — this is the shelf, not the workshop.
+ * Editing and deleting a card live on the Deck screen and stay there — this is
+ * the shelf, not the workshop. What this screen does add to the shelf is the
+ * two fast ways on: "Add a word" for one his wife just said, and "Tick words you
+ * know" (`library/tick.tsx`) for the deck he already half knows by ear. It also
+ * carries the words he has asked for and not yet been given (`requests`), so
+ * the capture queue lives here in practice rather than as a screen of its own
+ * on home.
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import { useRouter, type Href } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 
-import { ScriptText } from "@/components/ScriptText";
+import { MixedText, ScriptText } from "@/components/ScriptText";
 import { SpeakButton } from "@/components/SpeakButton";
-import { api, type LibraryEntry } from "@/lib/api";
+import { api, type LibraryEntry, type RequestEntry } from "@/lib/api";
 import { errorMessage } from "@/lib/errors";
 import {
   learnedLabel,
@@ -40,6 +46,7 @@ import {
   splitLibrary,
   type LibrarySort,
 } from "@/lib/library";
+import { pendingRequests } from "@/lib/requests";
 import { filterCards } from "@/lib/search";
 import {
   colors,
@@ -64,6 +71,15 @@ const SORTS: { key: LibrarySort; label: string }[] = [
 ];
 
 /**
+ * Where Practise lives. Typed as an `Href` once, here, for as long as the route
+ * is newer than the generated route types.
+ */
+const PRACTISE_HREF = "/practise" as Href;
+
+/** How many unanswered requests the "Asked for" list shows before "See all". */
+const ASKED_FOR_LIMIT = 5;
+
+/**
  * An entry flattened into the shape `filterCards` searches.
  *
  * Search is the deck's own — Cyrillic, its transliteration, or the English
@@ -82,6 +98,12 @@ export default function LibraryScreen() {
   const settings = useQuery({
     queryKey: ["settings"],
     queryFn: () => api.getSettings(),
+  });
+  // The capture queue, for "Asked for". The same `['requests']` list the
+  // Requests screen shows, so opening that from here costs no round trip.
+  const requests = useQuery({
+    queryKey: ["requests"],
+    queryFn: () => api.listRequests(),
   });
   const showLatin = settings.data?.show_latin ?? true;
   const ttsEnabled = settings.data?.tts_enabled ?? true;
@@ -137,36 +159,46 @@ export default function LibraryScreen() {
     );
   }
 
-  // Nothing studied at all: one sentence and the way to change that, rather
-  // than an empty list with a search box over it.
+  // Nothing known at all — which is where Mark starts. The first job is
+  // ticking the words he already knows, so that leads; adding one is second.
   if (entries.length === 0) {
     return (
-      <View style={styles.centred} testID="library-empty">
-        <Text style={styles.emptyTitle}>No words yet</Text>
-        <Text style={styles.muted}>
-          Words you review land here as you learn them — and a word you already
-          know can go straight in.
-        </Text>
-        <Pressable
-          style={({ pressed }) => [
-            styles.primaryButton,
-            pressed && styles.pressed,
-          ]}
-          onPress={() => router.push("/add")}
-          accessibilityRole="button"
-          testID="library-add-empty"
-        >
-          <Text style={styles.primaryButtonText}>+ Add a word</Text>
-        </Pressable>
-        <Pressable
-          style={styles.textButton}
-          onPress={() => router.push("/review")}
-          accessibilityRole="button"
-          testID="library-review-link"
-        >
-          <Text style={styles.textButtonLabel}>Start reviewing</Text>
-        </Pressable>
-      </View>
+      <ScrollView
+        contentContainerStyle={styles.emptyScroll}
+        testID="library-empty"
+      >
+        <View style={styles.emptyContent}>
+          <Text style={styles.emptyTitle}>Tick the words you already know</Text>
+          <Text style={styles.muted}>
+            Go through the deck a theme at a time and tap the ones you have.
+            Words you learn in Practise land here too.
+          </Text>
+          <Pressable
+            style={({ pressed }) => [
+              styles.primaryButton,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => router.push("/library/tick")}
+            accessibilityRole="button"
+            testID="library-tick-empty"
+          >
+            <Text style={styles.primaryButtonText}>Tick words you know</Text>
+          </Pressable>
+          <Pressable
+            style={styles.textButton}
+            onPress={() => router.push("/add")}
+            accessibilityRole="button"
+            testID="library-add-empty"
+          >
+            <Text style={styles.textButtonLabel}>+ Add a word</Text>
+          </Pressable>
+          <AskedFor
+            rows={requests.data}
+            failed={requests.isError}
+            onSeeAll={() => router.push("/requests")}
+          />
+        </View>
+      </ScrollView>
     );
   }
 
@@ -178,16 +210,16 @@ export default function LibraryScreen() {
             {libraryHeadline(counts.known, counts.learning)}
           </Text>
           <View style={styles.headerActions}>
-            {/* The other thing to do with a word you know: read it off the page.
-                Straight into the drill over these very words rather than to the
-                theme picker — this screen *is* the theme. */}
+            {/* The other thing to do with words you know: practise them.
+                Practise asks which words, and "My words" is one of the
+                choices. */}
             <Pressable
               style={styles.readLink}
-              onPress={() => router.push("/read/run?theme=mine")}
+              onPress={() => router.push(PRACTISE_HREF)}
               accessibilityRole="button"
-              testID="library-read-link"
+              testID="library-practise-link"
             >
-              <Text style={styles.readLinkText}>Read it</Text>
+              <Text style={styles.readLinkText}>Practise</Text>
             </Pressable>
             {/* The shelf is also where a word gets put on it. Mark learns most of
                 his vocabulary from his wife rather than from the deck, so the way
@@ -276,12 +308,38 @@ export default function LibraryScreen() {
         keyExtractor={(entry) => entry.card.id}
         contentContainerStyle={styles.listContent}
         keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          <View style={styles.listHeader}>
+            <Pressable
+              style={({ pressed }) => [
+                styles.tickRow,
+                pressed && styles.pressed,
+              ]}
+              onPress={() => router.push("/library/tick")}
+              accessibilityRole="button"
+              testID="library-tick"
+            >
+              <View style={styles.tickText}>
+                <Text style={styles.tickLabel}>Tick words you know</Text>
+                <Text style={styles.tickBlurb}>
+                  Go through the deck by theme and tap the ones you have
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+            <AskedFor
+              rows={requests.data}
+              failed={requests.isError}
+              onSeeAll={() => router.push("/requests")}
+            />
+          </View>
+        }
         ListEmptyComponent={
           <Text style={styles.muted} testID="library-no-match">
             {query
               ? `No words match “${query}”.`
               : section === "known"
-                ? "Nothing here yet — words move here once you have got them right a few times."
+                ? "None known yet. Tick the words you already know, above — and words you practise move here once you have got them right a few times."
                 : "Nothing part-learnt right now. Everything you have studied is under Known."}
           </Text>
         }
@@ -297,6 +355,64 @@ export default function LibraryScreen() {
           />
         )}
       />
+    </View>
+  );
+}
+
+/**
+ * "Asked for": the words he has requested and not yet been given.
+ *
+ * Only the unanswered ones — an answered request is a card in the deck by now,
+ * and the full Requests screen is where each sits beside its answer. Nothing at
+ * all when nothing is waiting: an empty heading would be a fact about nothing.
+ * A failed read says so in one quiet line rather than taking the screen down;
+ * the words above it are the point of the screen.
+ */
+function AskedFor({
+  rows,
+  failed,
+  onSeeAll,
+}: {
+  rows: readonly RequestEntry[] | undefined;
+  failed: boolean;
+  onSeeAll: () => void;
+}) {
+  if (failed) {
+    return (
+      <Text style={styles.askedMeta} testID="library-asked-error">
+        Could not load the words you have asked for.
+      </Text>
+    );
+  }
+  const pending = pendingRequests(rows ?? []);
+  if (pending.length === 0) return null;
+  const shown = pending.slice(0, ASKED_FOR_LIMIT);
+  const more = pending.length - shown.length;
+
+  return (
+    <View style={styles.asked} testID="library-asked">
+      <Text style={styles.askedHeading}>Asked for</Text>
+      {shown.map((row) => (
+        // Mixed by construction: a request filed from the reader quotes the
+        // tapped Cyrillic word inside English.
+        <MixedText
+          key={row.id}
+          style={styles.askedText}
+          testID={`library-asked-${row.id}`}
+        >
+          {row.text_en}
+        </MixedText>
+      ))}
+      <Pressable
+        style={styles.askedLink}
+        onPress={onSeeAll}
+        accessibilityRole="button"
+        testID="library-asked-all"
+      >
+        <Text style={styles.readLinkText}>
+          {more > 0 ? `See all (${more} more)` : "See all requests"}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -519,7 +635,56 @@ const styles = StyleSheet.create({
   exampleCyr: { fontSize: 17 },
   exampleLat: { fontSize: 13 },
   exampleEn: { fontSize: 13, fontStyle: "italic" },
-  emptyTitle: { fontSize: 24, fontWeight: "700", color: colors.text },
+  emptyScroll: { flexGrow: 1, justifyContent: "center", padding: spacing.lg },
+  emptyContent: {
+    width: "100%",
+    maxWidth: contentMaxWidth,
+    alignSelf: "center",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: "700",
+    color: colors.text,
+    textAlign: "center",
+  },
+  listHeader: { gap: spacing.sm },
+  tickRow: {
+    minHeight: touchTarget + 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  tickText: { flexShrink: 1, gap: 2 },
+  tickLabel: { fontSize: 17, fontWeight: "600", color: colors.text },
+  tickBlurb: { fontSize: 13, color: colors.textMuted },
+  chevron: { fontSize: 28, color: colors.primary },
+  asked: {
+    alignSelf: "stretch",
+    gap: spacing.xs,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  askedHeading: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textTransform: "uppercase",
+  },
+  askedText: { fontSize: 15 },
+  askedMeta: { fontSize: 13, color: colors.textMuted },
+  askedLink: { minHeight: touchTarget - 12, justifyContent: "center" },
   muted: { color: colors.textMuted, fontSize: 14, textAlign: "center" },
   primaryButton: {
     minHeight: touchTarget,
