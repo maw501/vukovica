@@ -14,14 +14,20 @@
  *                 `lib/library.ts`'s one rule);
  *   - otherwise — a `cards.domain`, as the Read it picker has always offered.
  *
+ * None of the three is on a schedule. Mark's words: "I want to drill all words
+ * - I don't want spaced repetition delays at the moment." So every way draws
+ * from the whole set, as often as he likes, shakiest first, and nothing a way
+ * records can take a word out of any of them. The flashcard queue still exists
+ * (`/review`, under More) but it is not one of these.
+ *
  * Pure and dependency-free, like `lib/readDrill.ts`: `api.ts` reaches
  * `lib/supabase.ts` (and therefore `react-native`), which vitest cannot load, so
- * what a set *means* is decided here and the screens and `getQueue` only ask.
+ * what a set *means* is decided here and the screens only ask.
  */
 
 import { isKnown, type LibraryEntry } from '@/lib/library';
 import { MINE_THEME, themeCards, themeLabel } from '@/lib/readDrill';
-import type { CardRow, CardState } from '@/lib/types';
+import type { CardRow } from '@/lib/types';
 
 export { MINE_THEME };
 
@@ -59,24 +65,25 @@ export interface WayOption {
 
 /**
  * In the order Mark meets them: reading is the skill the letters just taught,
- * writing is the same shapes the other way round, and meaning is the one that
- * comes back on a schedule.
+ * and the first step — using words he already knows to learn the Cyrillic —
+ * so it leads; writing is the same shapes the other way round; meaning is
+ * reading's mirror, the English first and the Serbian to find.
  */
 export const WAYS: readonly WayOption[] = [
   { way: 'read', label: 'Read aloud', blurb: 'See the Cyrillic, say it out loud, then check.' },
   { way: 'write', label: 'Write it', blurb: 'See it in Latin letters, type it in Cyrillic.' },
-  {
-    way: 'meaning',
-    label: 'Meaning',
-    blurb: 'Flashcards that come back when you’re about to forget.',
-  },
+  { way: 'meaning', label: 'Meaning', blurb: 'See the English, say the Serbian, then check.' },
 ];
 
-const WAY_PATHS: Record<PractiseWay, '/read/run' | '/trainer' | '/review'> = {
-  read: '/read/run',
-  write: '/trainer',
-  meaning: '/review',
-};
+/**
+ * Everything before the set's slug. Meaning is the Read aloud run turned round
+ * (`lib/readDrill.ts`'s `DrillWay`), so it is that screen with `way=meaning`.
+ */
+const WAY_PREFIXES = {
+  read: '/read/run?theme=',
+  write: '/trainer?theme=',
+  meaning: '/read/run?way=meaning&theme=',
+} as const satisfies Record<PractiseWay, string>;
 
 /**
  * Where a way opens for a set.
@@ -90,10 +97,36 @@ const WAY_PATHS: Record<PractiseWay, '/read/run' | '/trainer' | '/review'> = {
  * expo-router's typed routes accept: a bare `string` would not typecheck as an
  * `Href`, and importing `Href` here would tie a pure module to the router.
  */
-export type WayHref = `${(typeof WAY_PATHS)[PractiseWay]}?theme=${string}`;
+export type WayHref = `${(typeof WAY_PREFIXES)[PractiseWay]}${string}`;
 
 export function wayHref(way: PractiseWay, theme: string): WayHref {
-  return `${WAY_PATHS[way]}?theme=${encodeURIComponent(theme)}`;
+  return `${WAY_PREFIXES[way]}${encodeURIComponent(theme)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Which set Practise opens on
+// ---------------------------------------------------------------------------
+
+/**
+ * The set Practise shows the ways for straight away, or null for the list.
+ *
+ * The one he picked last time, while it still has words in it. Failing that,
+ * My words whenever it has any: "It is by using existing words I know I'll
+ * learn cyrillic — which is the first step", so the words he knows are the
+ * default rather than something to go and find. With neither, the list.
+ *
+ * Only a set with words in it is ever returned: a remembered set that has since
+ * emptied, or left the deck, would open three ways into nothing.
+ */
+export function initialSet(
+  remembered: string | null,
+  sets: readonly { domain: string; total: number }[],
+): string | null {
+  const usable = (domain: string | null) =>
+    domain !== null && sets.some((set) => set.domain === domain && set.total > 0);
+  if (usable(remembered)) return remembered;
+  if (usable(MINE_THEME)) return MINE_THEME;
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,76 +159,9 @@ export function practisePool({
   return themeCards({ theme, cards });
 }
 
-/**
- * How a set narrows the flashcard queue, for `api.getQueue` to turn into
- * filters.
- *
- * `mine` is the known words, so it can only ever be *due* ones: a known word
- * has a `user_cards` row by definition, and a new card is one that has none.
- * Asking for new cards there would be a wasted read that returns nothing.
- */
-export interface QueueScope {
-  /** Only cards in this `cards.domain`; null for any. */
-  domain: string | null;
-  /** Only rows in the known state. */
-  knownOnly: boolean;
-  /** Whether new cards may be introduced at all. */
-  includeNew: boolean;
-}
-
-export function queueScope(theme: string | null): QueueScope {
-  if (theme === null) return { domain: null, knownOnly: false, includeNew: true };
-  if (theme === MINE_THEME) return { domain: null, knownOnly: true, includeNew: false };
-  return { domain: theme.trim(), knownOnly: false, includeNew: true };
-}
-
-/**
- * Whether one queue candidate belongs to the scope.
- *
- * `getQueue` asks PostgREST for exactly this already; the check is repeated
- * over what comes back as defence in depth, the way `getQueue` re-checks
- * `kind`, because the screen promises "only Family" on the strength of it. It
- * can only drop rows, never add one the query left out. `userCard` is null for
- * a new card.
- */
-export function inQueueScope(
-  scope: QueueScope,
-  card: Pick<CardRow, 'domain'>,
-  userCard: { state: CardState } | null,
-): boolean {
-  if (userCard === null && !scope.includeNew) return false;
-  if (scope.knownOnly && (userCard === null || !isKnown(userCard))) return false;
-  if (scope.domain !== null && (card.domain?.trim() ?? '') !== scope.domain) return false;
-  return true;
-}
-
 // ---------------------------------------------------------------------------
 // What an empty way says
 // ---------------------------------------------------------------------------
-
-/**
- * Meaning (the flashcards) with nothing in the session.
- *
- * A themed session is empty for one of two reasons, and they need different
- * advice. Either nothing in the set needs going over, or — nearly always, while
- * Mark knows few words and every session is mostly new ones — today's new-word
- * allowance has been used, and it is shared across every set. Saying "try
- * another set" then sends him round in a circle, since every set will say the
- * same; so that case says it plainly and points at the two ways that have no
- * allowance at all.
- */
-export function meaningEmptyMessage(theme: string | null, newLeftToday: number): string {
-  if (theme === null) {
-    return 'No cards are due right now. Come back later, or add new words to the deck.';
-  }
-  if (theme === MINE_THEME) {
-    return 'None of your words need going over right now. Come back later, or try another set.';
-  }
-  if (newLeftToday <= 0) {
-    return 'You’ve met today’s new words. Come back tomorrow, or try Read aloud or Write it with these words.';
-  }
-  return `Nothing from ${setLabel(theme)} to go over right now. Come back later, or try another set.`;
-}
 
 /**
  * Write it with no words to type.
@@ -216,25 +182,6 @@ export function writeItEmptyMessage(theme: string | null, poolSize: number): str
     return 'Your words are all phrases so far. Write it needs single words.';
   }
   return `${setLabel(theme)} has no single words to type. Pick another set.`;
-}
-
-// ---------------------------------------------------------------------------
-// The daily line
-// ---------------------------------------------------------------------------
-
-/**
- * How many cards an unthemed flashcard session would hold right now: every due
- * card plus what is left of today's new ones.
- *
- * The same arithmetic the dashboard's habit card does with the same
- * `['dashboard']` figures, so the two can quote the same number.
- */
-export function dailyReviewCount(
-  stats: { dueCount: number; newAvailable: number; newDoneToday: number },
-  newPerDay: number,
-): number {
-  const newLeft = Math.max(0, Math.min(newPerDay - stats.newDoneToday, stats.newAvailable));
-  return Math.max(0, stats.dueCount) + newLeft;
 }
 
 // ---------------------------------------------------------------------------

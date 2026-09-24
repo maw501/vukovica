@@ -160,7 +160,7 @@ export default function LibraryScreen() {
 
   // Nothing known — which is where Mark starts. The first job is ticking the
   // words he already knows, so that leads; adding one is second. Keyed on
-  // known words rather than on rows: words part-way through Practise are not
+  // known words rather than on rows: words part-way through the flashcards are not
   // what this screen is for, but they stay one tap away below.
   if (counts.known === 0 && !listAnyway) {
     return (
@@ -172,7 +172,7 @@ export default function LibraryScreen() {
           <Text style={styles.emptyTitle}>Tick the words you already know</Text>
           <Text style={styles.muted}>
             Go through the deck a theme at a time and tap the ones you have.
-            Words you learn in Practise land here too.
+            Words you add yourself land here too.
           </Text>
           <Pressable
             style={({ pressed }) => [
@@ -355,7 +355,7 @@ export default function LibraryScreen() {
             {query
               ? `No words match “${query}”.`
               : section === "known"
-                ? "None known yet. Tick the words you already know, above — and words you practise move here once you have got them right a few times."
+                ? "None known yet. Tick the words you already know, above."
                 : "Nothing part-learnt right now. Everything you have studied is under Known."}
           </Text>
         }

@@ -47,17 +47,13 @@ export function lettersProgressLine(mastered: number): string {
 export const LETTERS_DONE_LINK = `Letters — all ${LETTER_TOTAL} learned`;
 
 /**
- * The Practise card's second line: how many words are waiting to be gone over.
+ * The Practise card's second line: what practising is.
  *
- * `due` is the dashboard's own `dueCount`, across every word. A run of Meaning
- * over one theme will only meet the share of them that is in it, which is why
- * this says "waiting today" rather than promising a session of that size.
+ * Not a count. It used to say how many flashcards were "waiting today", but
+ * nothing in Practise waits any more — every way drills every word whenever he
+ * likes — so a due count here would describe a schedule the card does not open.
  */
-export function practiseLine(due: number | null | undefined): string {
-  const count = clampCount(due ?? 0);
-  if (count === 0) return 'Read, write or learn what words mean';
-  return `${count} ${count === 1 ? 'word' : 'words'} waiting today`;
-}
+export const PRACTISE_LINE = 'Read, write or say what words mean';
 
 /**
  * The My words card's second line.

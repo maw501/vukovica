@@ -17,6 +17,12 @@
  * hundreds of words per theme, so a run is `READ_RUN_SIZE` of them and "Keep
  * going" builds the next one from what is left.
  *
+ * Practise's "Meaning" is this same drill the other way round (`DrillWay`):
+ * the English on the face, the Serbian said out loud, then checked. It used to
+ * be the flashcard queue over one set, until Mark asked to drill every word
+ * with no waiting — so it runs here, on its own tally, under the same rule that
+ * nothing can withhold a card.
+ *
  * Pure and dependency-free, like `lib/letters.ts` and `lib/library.ts`: `api.ts`
  * reaches `lib/supabase.ts` (and therefore `react-native`), which the Node-based
  * vitest environment cannot load, so everything the drill decides is decided
@@ -53,6 +59,28 @@ export const READ_SOLID_STREAK = 3;
  */
 export const READ_RUN_SIZE = 20;
 
+/**
+ * Which way round a run goes, and so which tally it reads and writes.
+ *
+ *   read    — Read aloud: the Cyrillic on the face; say it, then check.
+ *   meaning — Meaning: the English on the face; say the Serbian, then check.
+ *
+ * One screen and one ordering rule for both, because they are the same drill
+ * mirrored. They keep separate tallies (`read_stats.way`) because they are not
+ * the same skill: reading a word off the page three times running says nothing
+ * about producing it from the English, and a shared streak would call a word
+ * solid in a drill he has never done.
+ */
+export type DrillWay = "read" | "meaning";
+
+/** A `?way=` param as the run screen receives it. Anything else is Read aloud. */
+export function parseDrillWay(
+  value: string | string[] | undefined,
+): DrillWay {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return raw?.trim() === "meaning" ? "meaning" : "read";
+}
+
 /** The pseudo-theme that means "the words I already know", not a `cards.domain`. */
 export const MINE_THEME = "mine";
 
@@ -73,19 +101,24 @@ export interface ReadStat {
 export const UNRATED_READ: ReadStat = { easy: 0, hard: 0, streak: 0 };
 
 /**
- * The tally rows as a lookup, keyed by `cards.id`, with nulls and negatives
- * absorbed.
+ * One way's tally rows as a lookup, keyed by `cards.id`, with nulls and
+ * negatives absorbed.
  *
- * `read_stats` is keyed by (user, card) so duplicates cannot happen, but the
- * columns are nullable in the row type (a `select` can return null for any of
- * them) and a total function is one less thing for the screen to think about.
+ * `read_stats` is keyed by (user, card, way), so within one way duplicates
+ * cannot happen. The other way's rows are skipped, which is what keeps a good
+ * reading streak from reordering a Meaning run. A row with no `way` is a
+ * reading, as the column's default says. The counts are nullable in the row
+ * type (a `select` can return null for any of them) and a total function is one
+ * less thing for the screen to think about.
  */
 export function statsByCard(
   rows: readonly ReadStatRow[],
+  way: DrillWay = "read",
 ): Map<string, ReadStat> {
   const stats = new Map<string, ReadStat>();
   for (const row of rows) {
     if (!row.card_id) continue;
+    if ((row.way ?? "read") !== way) continue;
     stats.set(row.card_id, {
       easy: nonNegative(row.easy),
       hard: nonNegative(row.hard),
@@ -347,7 +380,8 @@ export function themeLabel(theme: string): string {
 
 /**
  * The name and arguments of `public.rate_read`
- * (`supabase/migrations/20260918160000_read_stats.sql`).
+ * (`supabase/migrations/20260924120000_read_stats_way.sql`, which recreated
+ * 20260918160000_read_stats.sql's function with `p_way` added).
  *
  * Argument names here and in the SQL are one contract with no compiler across
  * it: rename one side and PostgREST answers 404 at runtime. `readDrill.test.ts`
@@ -358,6 +392,11 @@ export const RATE_READ_FN = "rate_read";
 export interface RateReadParams {
   p_card_id: string;
   p_got_it: boolean;
+  /**
+   * Always sent, although the SQL defaults it to 'read': a Meaning answer that
+   * leaned on the default would quietly land in the reading tally.
+   */
+  p_way: DrillWay;
 }
 
 /**
@@ -369,6 +408,10 @@ export interface RateReadParams {
  * tariff itself, in the same transaction, so a reading cannot count for the
  * tally and not for the day.
  */
-export function rateReadParams(cardId: string, gotIt: boolean): RateReadParams {
-  return { p_card_id: cardId, p_got_it: gotIt };
+export function rateReadParams(
+  cardId: string,
+  gotIt: boolean,
+  way: DrillWay,
+): RateReadParams {
+  return { p_card_id: cardId, p_got_it: gotIt, p_way: way };
 }

@@ -17,6 +17,7 @@ import {
   runSummary,
   solidCount,
   statFor,
+  parseDrillWay,
   statsByCard,
   themeCards,
   themeLabel,
@@ -116,6 +117,29 @@ describe("statsByCard", () => {
 
   it("is empty for a user who has never read anything here", () => {
     expect(statsByCard([]).size).toBe(0);
+  });
+
+  it("keeps Read aloud's and Meaning's tallies apart", () => {
+    const rows = [
+      statRow("c1", { way: "read", easy: 3, streak: 3 }),
+      statRow("c1", { way: "meaning", hard: 1, streak: 0 }),
+    ];
+    expect(statsByCard(rows, "read").get("c1")).toEqual({
+      easy: 3,
+      hard: 0,
+      streak: 3,
+    });
+    expect(statsByCard(rows, "meaning").get("c1")).toEqual({
+      easy: 0,
+      hard: 1,
+      streak: 0,
+    });
+  });
+
+  it("counts a row with no way as a reading, the column's default", () => {
+    const rows = [statRow("c1", { easy: 2, streak: 2 })];
+    expect(statsByCard(rows).get("c1")?.easy).toBe(2);
+    expect(statsByCard(rows, "meaning").size).toBe(0);
   });
 });
 
@@ -469,22 +493,35 @@ describe("themeCards and themeLabel", () => {
 });
 
 describe("rateReadParams", () => {
-  it("sends the card and the verdict, and nothing else", () => {
-    expect(rateReadParams("card-1", true)).toEqual({
+  it("sends the card, the verdict and the way, and nothing else", () => {
+    expect(rateReadParams("card-1", true, "read")).toEqual({
       p_card_id: "card-1",
       p_got_it: true,
+      p_way: "read",
     });
-    expect(rateReadParams("card-1", false)).toEqual({
+    expect(rateReadParams("card-1", false, "meaning")).toEqual({
       p_card_id: "card-1",
       p_got_it: false,
+      p_way: "meaning",
     });
   });
 
   it("never sends a user id — the function takes that from auth.uid()", () => {
-    expect(Object.keys(rateReadParams("card-1", true))).toEqual([
+    expect(Object.keys(rateReadParams("card-1", true, "read"))).toEqual([
       "p_card_id",
       "p_got_it",
+      "p_way",
     ]);
+  });
+});
+
+describe("parseDrillWay", () => {
+  it("reads meaning, and treats anything else as Read aloud", () => {
+    expect(parseDrillWay("meaning")).toBe("meaning");
+    expect(parseDrillWay([" meaning "])).toBe("meaning");
+    expect(parseDrillWay("read")).toBe("read");
+    expect(parseDrillWay(undefined)).toBe("read");
+    expect(parseDrillWay("write")).toBe("read");
   });
 });
 
@@ -506,11 +543,26 @@ const migration = readFileSync(
   "utf8",
 );
 
-/** The `p_*` argument names the migration declares, in declaration order. */
+/**
+ * The migration that holds `rate_read`'s current definition: it was dropped and
+ * recreated with `p_way` when Meaning became a drill. The table tests below
+ * still read the original, which is where the table is created.
+ */
+const wayMigration = readFileSync(
+  path.join(
+    repoRoot,
+    "supabase",
+    "migrations",
+    "20260924120000_read_stats_way.sql",
+  ),
+  "utf8",
+);
+
+/** The `p_*` argument names the current function declares, in declaration order. */
 function migrationParameterNames(): string[] {
-  const signature = migration.slice(
-    migration.indexOf(`create function public.${RATE_READ_FN}(`),
-    migration.indexOf("returns public.read_stats"),
+  const signature = wayMigration.slice(
+    wayMigration.indexOf(`create function public.${RATE_READ_FN}(`),
+    wayMigration.indexOf("returns public.read_stats"),
   );
   return [...signature.matchAll(/^\s*(p_[a-z_]+)\s+/gm)].map(
     (match) => match[1],
@@ -563,53 +615,55 @@ describe("the read_stats migration keeps its contract", () => {
   });
 
   it("creates the rating function at all (guards every assertion below)", () => {
-    expect(migration).toContain(`create function public.${RATE_READ_FN}(`);
+    expect(wayMigration).toContain(`create function public.${RATE_READ_FN}(`);
   });
 
   it("declares exactly the arguments the client sends", () => {
     expect(migrationParameterNames()).toEqual(
-      Object.keys(rateReadParams("card-1", true)),
+      Object.keys(rateReadParams("card-1", true, "read")),
     );
   });
 
   it("keeps the function under the caller’s RLS, not the definer’s", () => {
-    expect(migration).toContain("security invoker");
+    expect(wayMigration).toContain("security invoker");
+    expect(wayMigration).toContain("set search_path = public, pg_temp");
+    expect(wayMigration).not.toContain("security definer");
     expect(migration).not.toContain("security definer");
   });
 
   it("fills user_id from auth.uid() rather than trusting an argument", () => {
-    expect(migration).toContain("auth.uid()");
+    expect(wayMigration).toContain("auth.uid()");
     expect(migrationParameterNames()).not.toContain("p_user_id");
   });
 
   it("refuses a card that is not a word", () => {
     // A letter card's `sr_cyr` is a pair, not something to read aloud and
     // translate — the letters have their own drill and their own tally.
-    expect(migration).toMatch(
+    expect(wayMigration).toMatch(
       /if not exists \(\s*select 1 from public\.cards\s*where cards\.id = p_card_id and cards\.kind = 'word'\s*\)/,
     );
     // ...and it must come before the write, not after it.
-    expect(migration.indexOf("cards.kind = 'word'")).toBeLessThan(
-      migration.indexOf("insert into public.read_stats"),
+    expect(wayMigration.indexOf("cards.kind = 'word'")).toBeLessThan(
+      wayMigration.indexOf("insert into public.read_stats"),
     );
   });
 
   it("adds to the tally instead of replacing it", () => {
     // The reason the RPC exists at all: PostgREST's upsert would write
     // `excluded.easy` and silently lose every concurrent rating.
-    expect(migration).toMatch(/easy\s*=\s*rs\.easy\s*\+/);
-    expect(migration).toMatch(/hard\s*=\s*rs\.hard\s*\+/);
+    expect(wayMigration).toMatch(/easy\s*=\s*rs\.easy\s*\+/);
+    expect(wayMigration).toMatch(/hard\s*=\s*rs\.hard\s*\+/);
   });
 
   it('resets the streak on "Not yet" and never decrements it', () => {
-    expect(migration).toMatch(
+    expect(wayMigration).toMatch(
       /streak\s*=\s*case when p_got_it then rs\.streak \+ 1 else 0 end/,
     );
-    expect(migration).not.toMatch(/streak\s*=\s*rs\.streak\s*-/);
+    expect(wayMigration).not.toMatch(/streak\s*=\s*rs\.streak\s*-/);
   });
 
   it("pays the same XP a word review pays, in the same transaction", () => {
-    const award = migration.match(
+    const award = wayMigration.match(
       /insert into public\.xp_events \(user_id, amount, kind\)\s*values \(v_user_id, (\d+), '(\w+)'\)/,
     );
     expect(award).not.toBeNull();
@@ -620,20 +674,55 @@ describe("the read_stats migration keeps its contract", () => {
   });
 
   it("grants execute explicitly and takes the default PUBLIC and anon grants back", () => {
-    expect(migration).toMatch(
+    expect(wayMigration).toMatch(
       /revoke execute on function public\.rate_read\([\s\S]*?\) from public;/,
     );
-    expect(migration).toMatch(
+    expect(wayMigration).toMatch(
       /revoke execute on function public\.rate_read\([\s\S]*?\) from anon;/,
     );
-    expect(migration).toMatch(
+    expect(wayMigration).toMatch(
       /grant execute on function public\.rate_read\([\s\S]*?\) to authenticated;/,
     );
   });
 
   it("leaves the review queue alone — reading a word is not answering it", () => {
-    expect(migration).not.toMatch(/insert into public\.user_cards/);
-    expect(migration).not.toMatch(/update public\.user_cards/);
-    expect(migration).not.toMatch(/delete from public\.user_cards/);
+    for (const sql of [migration, wayMigration]) {
+      expect(sql).not.toMatch(/insert into public\.user_cards/);
+      expect(sql).not.toMatch(/update public\.user_cards/);
+      expect(sql).not.toMatch(/delete from public\.user_cards/);
+    }
+  });
+});
+
+describe("the read_stats way migration keeps the two tallies apart", () => {
+  it("adds a checked way column that defaults every existing row to a reading", () => {
+    expect(wayMigration).toMatch(
+      /add column way text not null default 'read'\s+constraint read_stats_way_check check \(way in \('read', 'meaning'\)\)/,
+    );
+  });
+
+  it("makes the way part of the key, and upserts on the same key", () => {
+    expect(wayMigration).toContain("add primary key (user_id, card_id, way)");
+    expect(wayMigration).toContain("on conflict (user_id, card_id, way)");
+  });
+
+  it("replaces the two-argument function rather than overloading it", () => {
+    expect(wayMigration).toContain("drop function public.rate_read(uuid, boolean);");
+    // A default, so a client that still sends two arguments keeps writing
+    // reading tallies until it reloads.
+    expect(wayMigration).toMatch(/p_way\s+text default 'read'/);
+  });
+
+  it("refuses a way it does not know before writing anything", () => {
+    expect(wayMigration).toMatch(/if p_way is null or p_way not in \('read', 'meaning'\)/);
+    expect(wayMigration.indexOf("p_way not in")).toBeLessThan(
+      wayMigration.indexOf("insert into public.read_stats"),
+    );
+  });
+
+  it("offers exactly the ways the client can send", () => {
+    const allowed = [...wayMigration.matchAll(/way in \(([^)]*)\)/g)].map((m) => m[1]);
+    expect(allowed.length).toBeGreaterThan(0);
+    for (const list of allowed) expect(list).toBe("'read', 'meaning'");
   });
 });

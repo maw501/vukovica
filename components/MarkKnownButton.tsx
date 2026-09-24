@@ -77,7 +77,7 @@ export function MarkKnownButton({
     return (
       <View style={styles.done} testID={`${testID}-done`}>
         <Text style={styles.doneText}>
-          Marked as known. It will not come round for a while.
+          Added to My words.
         </Text>
       </View>
     );

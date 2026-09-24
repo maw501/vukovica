@@ -40,6 +40,14 @@ const ROWS: readonly MoreRow[] = [
     href: '/deck',
   },
   {
+    // The old daily flashcards. Off the everyday path since Practise stopped
+    // waiting on a schedule, but not gone: here for when he wants them back.
+    key: 'review',
+    label: 'Flashcards on a schedule',
+    blurb: 'Each word comes back just before you would forget it',
+    href: '/review',
+  },
+  {
     key: 'alphabet',
     label: 'The alphabet',
     blurb: 'All thirty letters, with a word for each',

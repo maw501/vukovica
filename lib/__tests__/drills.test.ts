@@ -14,7 +14,9 @@ import {
   pickDrillWords,
   scoreAttempt,
   segmentExpected,
+  sittingPool,
   tallyAttempts,
+  unseenDrillableCount,
   weakestLetters,
   type LetterResult,
 } from '@/lib/drills';
@@ -181,6 +183,52 @@ describe('pickDrillWords', () => {
   it('defaults to Math.random when no generator is passed', () => {
     // The binding signature is three arguments; the generator is a test seam.
     expect(pickDrillWords(pool, [], 2)).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sittingPool / unseenDrillableCount
+// ---------------------------------------------------------------------------
+
+describe('sittingPool', () => {
+  const set = [card('мама'), card('тата'), card('кућа'), card('добар дан')];
+
+  it('leaves out the words this sitting has already had', () => {
+    const { cards, restarted } = sittingPool(set, new Set(['мама']));
+    expect(cards.map((c) => c.id)).toEqual(['тата', 'кућа', 'добар дан']);
+    expect(restarted).toBe(false);
+  });
+
+  it('starts the set over once every drillable word has been had', () => {
+    // Only the phrase is left, and a phrase is not something Write it drills.
+    const { cards, restarted } = sittingPool(set, new Set(['мама', 'тата', 'кућа']));
+    expect(cards).toHaveLength(set.length);
+    expect(restarted).toBe(true);
+  });
+
+  it('works through a whole set in rounds, every word once before any twice', () => {
+    const words = Array.from({ length: 23 }, (_, i) => card(`реч${String.fromCharCode(1072 + i)}`));
+    let seen = new Set<string>();
+    const met: string[] = [];
+    for (let round = 0; round < 3; round += 1) {
+      const from = sittingPool(words, seen);
+      const picked = pickDrillWords(from.cards, [], 10, () => 0.5);
+      seen = new Set([...(from.restarted ? [] : seen), ...picked.map((c) => c.id)]);
+      met.push(...picked.map((c) => c.id));
+    }
+    expect(met).toHaveLength(23);
+    expect(new Set(met).size).toBe(23);
+    expect(unseenDrillableCount(words, seen)).toBe(0);
+    // ...and the fourth round is the set again, not an empty one.
+    expect(sittingPool(words, seen).restarted).toBe(true);
+  });
+});
+
+describe('unseenDrillableCount', () => {
+  it('counts only single words not had yet', () => {
+    const set = [card('мама'), card('тата'), card('добар дан')];
+    expect(unseenDrillableCount(set, new Set())).toBe(2);
+    expect(unseenDrillableCount(set, new Set(['мама']))).toBe(1);
   });
 });
 

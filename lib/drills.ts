@@ -146,6 +146,34 @@ export function pickDrillWords(
   return picked;
 }
 
+/**
+ * The words the next round may draw from: the set's, minus every word this
+ * sitting has already had — so that "Another round" works through the whole
+ * set rather than drawing ten at random each time and meeting some words three
+ * times before others once.
+ *
+ * Once the sitting has had every drillable word in the set, the whole set is
+ * offered again and `restarted` says so; the caller forgets what it has seen
+ * and carries on. No round is ever refused: Write it has no schedule, and a
+ * word is always available to type.
+ */
+export function sittingPool(
+  cards: readonly CardRow[],
+  seen: ReadonlySet<string>,
+): { cards: CardRow[]; restarted: boolean } {
+  const unseen = cards.filter((card) => !seen.has(card.id));
+  if (unseen.some(isDrillable)) return { cards: unseen, restarted: false };
+  return { cards: [...cards], restarted: true };
+}
+
+/** How many drillable words of the set this sitting has not had yet. */
+export function unseenDrillableCount(
+  cards: readonly CardRow[],
+  seen: ReadonlySet<string>,
+): number {
+  return cards.filter((card) => !seen.has(card.id) && isDrillable(card)).length;
+}
+
 // ---------------------------------------------------------------------------
 // Marking an answer
 // ---------------------------------------------------------------------------

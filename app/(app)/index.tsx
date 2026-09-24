@@ -32,7 +32,7 @@ import {
   lettersLeading,
   lettersProgressLine,
   myWordsLine,
-  practiseLine,
+  PRACTISE_LINE,
 } from '@/lib/home';
 import { LETTER_TOTAL } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
@@ -92,7 +92,7 @@ export default function DashboardScreen() {
         ) : null}
         {dashboard.isError ? (
           <ErrorCard
-            message={errorMessage(dashboard.error, 'Could not load what is waiting today.')}
+            message={errorMessage(dashboard.error, 'Could not load your streak.')}
             onRetry={() => void dashboard.refetch()}
           />
         ) : null}
@@ -113,7 +113,7 @@ export default function DashboardScreen() {
 
         <BigCard
           title="Practise"
-          line={dashboard.isPending ? null : practiseLine(dashboard.data?.dueCount)}
+          line={PRACTISE_LINE}
           // The main thing once the letters are done; a strong second before.
           primary={!leading}
           testID="home-practise"
