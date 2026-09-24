@@ -64,7 +64,7 @@ export interface WayOption {
  */
 export const WAYS: readonly WayOption[] = [
   { way: 'read', label: 'Read aloud', blurb: 'See the Cyrillic, say it out loud, then check.' },
-  { way: 'write', label: 'Write it', blurb: 'See the English, type it in Cyrillic.' },
+  { way: 'write', label: 'Write it', blurb: 'See it in Latin letters, type it in Cyrillic.' },
   {
     way: 'meaning',
     label: 'Meaning',
@@ -153,10 +153,10 @@ export function queueScope(theme: string | null): QueueScope {
  * Whether one queue candidate belongs to the scope.
  *
  * `getQueue` asks PostgREST for exactly this already; the check is repeated
- * over what comes back because a domain stored with stray whitespace would slip
- * past an `eq` in one direction and a trimmed comparison in the other, and the
- * screen promises "only Family" on the strength of it. `userCard` is null for a
- * new card.
+ * over what comes back as defence in depth, the way `getQueue` re-checks
+ * `kind`, because the screen promises "only Family" on the strength of it. It
+ * can only drop rows, never add one the query left out. `userCard` is null for
+ * a new card.
  */
 export function inQueueScope(
   scope: QueueScope,
@@ -167,6 +167,55 @@ export function inQueueScope(
   if (scope.knownOnly && (userCard === null || !isKnown(userCard))) return false;
   if (scope.domain !== null && (card.domain?.trim() ?? '') !== scope.domain) return false;
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// What an empty way says
+// ---------------------------------------------------------------------------
+
+/**
+ * Meaning (the flashcards) with nothing in the session.
+ *
+ * A themed session is empty for one of two reasons, and they need different
+ * advice. Either nothing in the set needs going over, or — nearly always, while
+ * Mark knows few words and every session is mostly new ones — today's new-word
+ * allowance has been used, and it is shared across every set. Saying "try
+ * another set" then sends him round in a circle, since every set will say the
+ * same; so that case says it plainly and points at the two ways that have no
+ * allowance at all.
+ */
+export function meaningEmptyMessage(theme: string | null, newLeftToday: number): string {
+  if (theme === null) {
+    return 'No cards are due right now. Come back later, or add new words to the deck.';
+  }
+  if (theme === MINE_THEME) {
+    return 'None of your words need going over right now. Come back later, or try another set.';
+  }
+  if (newLeftToday <= 0) {
+    return 'You’ve met today’s new words. Come back tomorrow, or try Read aloud or Write it with these words.';
+  }
+  return `Nothing from ${setLabel(theme)} to go over right now. Come back later, or try another set.`;
+}
+
+/**
+ * Write it with no words to type.
+ *
+ * The trainer only drills single words, so a set can be non-empty and still
+ * give it nothing: My words holding only phrases, say. `poolSize` is the set
+ * before that filter, which is what tells "nothing ticked yet" from "only
+ * phrases".
+ */
+export function writeItEmptyMessage(theme: string | null, poolSize: number): string {
+  if (theme === null) {
+    return 'There are no single words in the deck to drill yet. Add a word and come back.';
+  }
+  if (theme === MINE_THEME && poolSize === 0) {
+    return 'Nothing here yet — tick words you know in My words, then come back.';
+  }
+  if (theme === MINE_THEME) {
+    return 'Your words are all phrases so far. Write it needs single words.';
+  }
+  return `${setLabel(theme)} has no single words to type. Pick another set.`;
 }
 
 // ---------------------------------------------------------------------------

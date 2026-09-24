@@ -28,14 +28,13 @@ import { WordFace } from '@/components/WordFace';
 import { api } from '@/lib/api';
 import { playAudioPath } from '@/lib/audio';
 import { errorMessage } from '@/lib/errors';
-import { isKnown } from '@/lib/library';
+import { practisePool } from '@/lib/practise';
 import {
   MINE_THEME,
   buildRun,
   remainingCount,
   runSummary,
   statsByCard,
-  themeCards,
   themeLabel,
   type RunTally,
 } from '@/lib/readDrill';
@@ -101,13 +100,11 @@ export default function ReadRunScreen() {
   // in one frame, and a state update is not visible to the second of them.
   const settleUntil = useRef(0);
 
-  const pool = useMemo(() => {
-    if (mine) {
-      const entries = (library.data ?? []).filter((entry) => isKnown(entry.userCard));
-      return entries.map((entry) => entry.card);
-    }
-    return themeCards({ theme, cards: deck.data ?? [] });
-  }, [deck.data, library.data, mine, theme]);
+  // The same rule Write it and Practise's counts use, from `lib/practise.ts`.
+  const pool = useMemo(
+    () => practisePool({ theme, cards: deck.data ?? [], library: library.data ?? [] }),
+    [deck.data, library.data, theme],
+  );
 
   const tallies = useMemo(() => statsByCard(stats.data ?? []), [stats.data]);
   const loaded = (mine ? library.data : deck.data) !== undefined && stats.data !== undefined;
@@ -146,8 +143,9 @@ export default function ReadRunScreen() {
       // has just written to...
       void queryClient.invalidateQueries({ queryKey: ['xp'] });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      // The picker's "N words · M solid" is counted from these same tallies, but
-      // it is deliberately NOT refreshed here. `/practise` is still mounted under
+      // Practise's set list (`['read-themes']`) is built from these same
+      // tallies — it shows only "N words" today, but the query still folds in
+      // the solid counts — and it is deliberately NOT refreshed here. `/practise` is still mounted under
       // this screen, so an invalidation would refetch it there and then — and
       // that query reads the whole deck and the whole of My words, which is
       // three requests and something like fifteen hundred rows between one card
@@ -231,7 +229,7 @@ export default function ReadRunScreen() {
   }, [retryFailures, router]);
 
   /**
-   * Refresh the picker's counts once, when the run ends.
+   * Refresh Practise's set list once, when the run ends.
    *
    * This is what `rate_read`'s `onSuccess` deliberately does not do per rating:
    * one refetch of a heavy query at a moment when nobody is waiting on the next

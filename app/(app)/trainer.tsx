@@ -12,10 +12,9 @@
  * in front of the user do not.
  *
  * This is Practise's "Write it", so it opens the way round that is *writing*:
- * the English on top, the Cyrillic typed below. The Latin spelling used to be
- * the prompt in that direction, which made it a transliteration exercise — a
- * letter-for-letter swap that never asks what the word is. It is one tap away
- * instead, for the words not yet known well enough to spell from the meaning.
+ * Latin → Cyrillic, which is what Mark asked for — a script exercise. The Latin
+ * spelling is the prompt, with the English underneath so every word is also a
+ * word and not only a string of letters; the Cyrillic is what gets typed.
  *
  * `?theme=` narrows the words to one Practise set (`lib/practise.ts`): a
  * domain, or `mine` for the words already known. No theme is the whole deck.
@@ -52,7 +51,13 @@ import {
   type LetterResult,
 } from '@/lib/drills';
 import { errorMessage } from '@/lib/errors';
-import { MINE_THEME, parseTheme, practisePool, setLabel } from '@/lib/practise';
+import {
+  MINE_THEME,
+  parseTheme,
+  practisePool,
+  setLabel,
+  writeItEmptyMessage,
+} from '@/lib/practise';
 import { LETTER_TOTAL, masteredLetters } from '@/lib/stages';
 import type { ScriptRole } from '@/lib/script';
 import { colors, contentMaxWidth, radius, script, spacing, touchTarget } from '@/lib/theme';
@@ -67,19 +72,20 @@ const SUMMARY_LETTERS = 5;
 /** Which way round the drill runs. */
 type Mode = 'cyr-lat' | 'lat-cyr';
 
-/**
- * Writing first, because that is what "Write it" promises. The labels name
- * what gets typed: the prompt in the writing direction is the English now, so
- * "Latin → Cyrillic" would no longer describe it.
- */
+/** Writing first, because that is what "Write it" promises and opens on. */
 const MODES: { mode: Mode; label: string; hint: string }[] = [
-  { mode: 'lat-cyr', label: 'Type Cyrillic', hint: 'See the English, type it in Cyrillic' },
-  { mode: 'cyr-lat', label: 'Type Latin', hint: 'Read the Cyrillic, type the Latin' },
+  { mode: 'lat-cyr', label: 'Latin → Cyrillic', hint: 'Read the Latin, type the Cyrillic' },
+  { mode: 'cyr-lat', label: 'Cyrillic → Latin', hint: 'Read the Cyrillic, type the Latin' },
 ];
 
 /** The answer the user is being asked for, in the script they must type it in. */
 function expectedAnswer(card: CardRow, mode: Mode): string {
   return mode === 'cyr-lat' ? cyrToLat(card.sr_cyr) : card.sr_cyr;
+}
+
+/** The word as shown at the top of the card. */
+function prompt(card: CardRow, mode: Mode): string {
+  return mode === 'cyr-lat' ? card.sr_cyr : cyrToLat(card.sr_cyr);
 }
 
 /**
@@ -94,11 +100,8 @@ function answerRole(mode: Mode): ScriptRole {
   return mode === 'cyr-lat' ? 'lat' : 'cyr';
 }
 
-/**
- * The script of the *other* spelling shown once a word is marked: the Cyrillic
- * under a Latin answer, the Latin under a Cyrillic one.
- */
-function otherRole(mode: Mode): ScriptRole {
+/** The script the prompt is in: the opposite of the answer's. */
+function promptRole(mode: Mode): ScriptRole {
   return mode === 'cyr-lat' ? 'cyr' : 'lat';
 }
 
@@ -131,8 +134,6 @@ export default function TrainerScreen() {
   );
 
   const [mode, setMode] = useState<Mode>('lat-cyr');
-  /** Whether the Latin spelling is showing under the English, for this word. */
-  const [hinted, setHinted] = useState(false);
   /** The round's words, fixed for its lifetime. Null means "build me one". */
   const [round, setRound] = useState<CardRow[] | null>(null);
   const [index, setIndex] = useState(0);
@@ -164,7 +165,6 @@ export default function TrainerScreen() {
     setIndex(0);
     setTyped('');
     setMarked(null);
-    setHinted(false);
     setResults([]);
     roundAwarded.current = false;
   }, []);
@@ -248,7 +248,6 @@ export default function TrainerScreen() {
 
   const next = useCallback(() => {
     setMarked(null);
-    setHinted(false);
     setTyped('');
     setIndex((current) => current + 1);
     inputRef.current?.focus();
@@ -329,11 +328,7 @@ export default function TrainerScreen() {
     return (
       <View style={styles.centred}>
         <Text style={styles.error} testID="trainer-empty">
-          {theme === null
-            ? 'There are no single words in the deck to drill yet. Add a word and come back.'
-            : mine
-              ? 'Nothing here yet — tick words you know in My words, then come back.'
-              : `${setLabel(theme)} has no single words to type. Pick another set.`}
+          {writeItEmptyMessage(theme, pool.length)}
         </Text>
         <Pressable
           style={styles.textButton}
@@ -471,41 +466,12 @@ export default function TrainerScreen() {
         {banner}
 
         <View style={styles.card}>
-          {mode === 'cyr-lat' ? (
-            <>
-              <ScriptText role="cyr" style={styles.promptWord} testID="drill-prompt">
-                {card.sr_cyr}
-              </ScriptText>
-              <ScriptText role="en" style={styles.promptEn}>
-                {card.en}
-              </ScriptText>
-            </>
-          ) : (
-            <>
-              {/* The meaning is the question, so it is set as one: full
-                  text colour, not the muted grey English is elsewhere. */}
-              <Text style={styles.promptMeaning} testID="drill-prompt">
-                {card.en}
-              </Text>
-              {hinted || marked ? (
-                <ScriptText role="lat" style={styles.promptEn} testID="drill-hint-text">
-                  {cyrToLat(card.sr_cyr)}
-                </ScriptText>
-              ) : (
-                <Pressable
-                  style={styles.hintButton}
-                  onPress={() => {
-                    setHinted(true);
-                    inputRef.current?.focus();
-                  }}
-                  accessibilityRole="button"
-                  testID="drill-hint"
-                >
-                  <Text style={styles.hintButtonLabel}>Show the spelling in Latin</Text>
-                </Pressable>
-              )}
-            </>
-          )}
+          <ScriptText role={promptRole(mode)} style={styles.promptWord} testID="drill-prompt">
+            {prompt(card, mode)}
+          </ScriptText>
+          <ScriptText role="en" style={styles.promptEn}>
+            {card.en}
+          </ScriptText>
 
           <TextInput
             ref={inputRef}
@@ -557,13 +523,9 @@ export default function TrainerScreen() {
                 {marked.correct ? 'Correct' : 'Not quite'}
               </Text>
               <MarkedAnswer expected={expected} score={marked} role={answerRole(mode)} />
-              {/* The Latin is already on the card once a Cyrillic answer is
-                  marked; the Cyrillic under a Latin answer is not. */}
-              {mode === 'cyr-lat' ? (
-                <ScriptText role={otherRole(mode)} style={styles.otherScript}>
-                  {card.sr_cyr}
-                </ScriptText>
-              ) : null}
+              <ScriptText role={promptRole(mode)} style={styles.otherScript}>
+                {mode === 'cyr-lat' ? card.sr_cyr : cyrToLat(card.sr_cyr)}
+              </ScriptText>
             </View>
           ) : null}
         </View>
@@ -758,14 +720,6 @@ const styles = StyleSheet.create({
   // Colour and face come from `script`; only size, weight and layout live here.
   promptWord: { fontSize: 40, fontWeight: '700', textAlign: 'center' },
   promptEn: { fontSize: 15, marginBottom: spacing.sm },
-  promptMeaning: { fontSize: 30, fontWeight: '700', color: colors.text, textAlign: 'center' },
-  hintButton: {
-    minHeight: touchTarget - 12,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  hintButtonLabel: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   input: {
     alignSelf: 'stretch',
     minHeight: touchTarget,

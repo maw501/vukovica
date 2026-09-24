@@ -40,7 +40,7 @@ import { confirmAction } from '@/lib/confirm';
 import { errorMessage } from '@/lib/errors';
 import { formatInterval } from '@/lib/format';
 import { gradeIntervals, newUserCard, type ReviewGrade } from '@/lib/fsrs';
-import { MINE_THEME, parseTheme, setLabel } from '@/lib/practise';
+import { meaningEmptyMessage, parseTheme, setLabel } from '@/lib/practise';
 import {
   answerCurrent,
   createSession,
@@ -62,16 +62,6 @@ const GRADES: { grade: ReviewGrade; label: string; colour: string }[] = [
   { grade: 4, label: 'Easy', colour: '#2F7A4D' },
 ];
 
-/** What to say when the session had nothing in it. */
-const NOTHING_DUE =
-  'No cards are due right now. Come back later, or add new words to the deck.';
-
-/** The same, for a session over one Practise set. */
-function nothingDueIn(theme: string): string {
-  return theme === MINE_THEME
-    ? 'None of your words need going over right now. Come back later, or try another set.'
-    : `Nothing from ${setLabel(theme)} to go over right now. Come back later, or try another set.`;
-}
 
 /**
  * Where the dashboard keeps the figures this screen moves: inside the habit
@@ -121,7 +111,8 @@ export default function ReviewScreen() {
    * share a cached queue. Everything that invalidates `['queue']` still reaches
    * both: that is a prefix match.
    */
-  const queueKey = useMemo(() => ['queue', theme ?? 'all'] as const, [theme]);
+  // `null` rather than a sentinel string: a string could one day be a domain.
+  const queueKey = useMemo(() => ['queue', theme] as const, [theme]);
   const queue = useQuery({
     queryKey: queueKey,
     queryFn: () => api.getQueue(new Date(), theme),
@@ -184,11 +175,12 @@ export default function ReviewScreen() {
   // session so a later refetch cannot make the card on screen disappear.
   useEffect(() => {
     if (!queue.data || queue.isFetching || session !== null) return;
-    setEntries(new Map(queue.data.map((entry) => [entry.cardId, entry])));
-    latestRows.current = new Map(queue.data.map((entry) => [entry.cardId, entry.userCard]));
+    const { entries: queued } = queue.data;
+    setEntries(new Map(queued.map((entry) => [entry.cardId, entry])));
+    latestRows.current = new Map(queued.map((entry) => [entry.cardId, entry.userCard]));
     answered.current = new Set();
     setMarkedKnown(0);
-    setSession(createSession(queue.data.map((entry) => entry.cardId)));
+    setSession(createSession(queued.map((entry) => entry.cardId)));
   }, [queue.data, queue.isFetching, session]);
 
   const submit = useMutation({
@@ -456,7 +448,7 @@ export default function ReviewScreen() {
       <Summary
         session={session}
         markedKnown={markedKnown}
-        emptyMessage={theme !== null ? nothingDueIn(theme) : NOTHING_DUE}
+        emptyMessage={meaningEmptyMessage(theme, queue.data?.newLeftToday ?? 0)}
         setName={theme !== null ? setLabel(theme) : null}
         doneLabel={theme !== null ? 'Back to Practise' : 'Back to the dashboard'}
         onDone={() => void goHome()}

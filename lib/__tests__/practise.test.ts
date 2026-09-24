@@ -7,12 +7,14 @@ import {
   WAYS,
   dailyReviewCount,
   inQueueScope,
+  meaningEmptyMessage,
   parseTheme,
   practisePool,
   queueScope,
   readLastSet,
   setLabel,
   wayHref,
+  writeItEmptyMessage,
   writeLastSet,
   type KeyValueStore,
 } from '@/lib/practise';
@@ -142,7 +144,9 @@ describe('queueScope and inQueueScope', () => {
     expect(inQueueScope(scope, food, userCard('g', 'review'))).toBe(false);
   });
 
-  it('compares domains trimmed, the same way the picker counts them', () => {
+  // `getQueue`'s `.eq` has already excluded such a row by the time this runs;
+  // the check only has to agree with the picker's trimmed rule, not rescue it.
+  it('compares domains trimmed, agreeing with the picker', () => {
     expect(inQueueScope(queueScope('family'), { domain: 'family ' }, null)).toBe(true);
   });
 
@@ -153,6 +157,43 @@ describe('queueScope and inQueueScope', () => {
     expect(inQueueScope(scope, food, userCard('g', 'learning'))).toBe(false);
     expect(inQueueScope(scope, food, userCard('g', 'relearning'))).toBe(false);
     expect(inQueueScope(scope, food, null)).toBe(false);
+  });
+});
+
+describe('meaningEmptyMessage', () => {
+  it('keeps the daily session’s message with no theme', () => {
+    expect(meaningEmptyMessage(null, 0)).toMatch(/^No cards are due right now/);
+  });
+
+  it('says today’s new words are used up rather than "try another set" in circles', () => {
+    const message = meaningEmptyMessage('family', 0);
+    expect(message).toMatch(/today’s new words/);
+    expect(message).toMatch(/tomorrow/);
+    expect(message).not.toMatch(/another set/);
+  });
+
+  it('names the set when there was allowance left and still nothing to do', () => {
+    expect(meaningEmptyMessage('family', 4)).toBe(
+      'Nothing from Family to go over right now. Come back later, or try another set.',
+    );
+  });
+
+  it('never blames the allowance for My words, which never takes new cards', () => {
+    expect(meaningEmptyMessage(MINE_THEME, 0)).toMatch(/^None of your words/);
+  });
+});
+
+describe('writeItEmptyMessage', () => {
+  it('tells an empty My words from one holding only phrases', () => {
+    expect(writeItEmptyMessage(MINE_THEME, 0)).toMatch(/tick words you know/);
+    expect(writeItEmptyMessage(MINE_THEME, 3)).toMatch(/all phrases/);
+  });
+
+  it('names a domain with no single words, and keeps the whole-deck message', () => {
+    expect(writeItEmptyMessage('phrases', 40)).toBe(
+      'Phrases has no single words to type. Pick another set.',
+    );
+    expect(writeItEmptyMessage(null, 0)).toMatch(/^There are no single words in the deck/);
   });
 });
 

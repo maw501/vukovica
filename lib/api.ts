@@ -393,6 +393,20 @@ export interface QueueEntry {
 }
 
 /**
+ * A session's cards, and what was left of today's new-word allowance when they
+ * were chosen.
+ *
+ * The allowance travels with the queue because an empty *themed* session has
+ * two very different causes — nothing in the set needs going over, or today's
+ * new words have all been met elsewhere — and only the second is fixed by
+ * coming back tomorrow. The screen has to be able to say which.
+ */
+export interface Queue {
+  entries: QueueEntry[];
+  newLeftToday: number;
+}
+
+/**
  * PostgREST caps a response at `max_rows` (1000). Both the studied-ids read and
  * the new-card candidate read stay well inside that for a ~700-card deck; if the
  * deck ever outgrows it, they need paginating (the counts would silently
@@ -497,7 +511,7 @@ async function fetchNewCards(
 async function getQueue(
   now: Date = new Date(),
   theme: string | null = null,
-): Promise<QueueEntry[]> {
+): Promise<Queue> {
   const userId = await requireUserId();
   const kind = WORD_KIND;
   const scope = queueScope(theme);
@@ -562,9 +576,10 @@ async function getQueue(
     byId.set(card.id, { cardId: card.id, isNew: true, card, userCard: null });
   }
 
-  return buildQueue({ dueCards, newCards, newPerDay, newDoneToday })
+  const entries = buildQueue({ dueCards, newCards, newPerDay, newDoneToday })
     .map((item) => byId.get(item.cardId))
     .filter((entry): entry is QueueEntry => entry !== undefined);
+  return { entries, newLeftToday: Math.max(0, newPerDay - newDoneToday) };
 }
 
 export interface SubmitReviewArgs {
