@@ -1,5 +1,15 @@
 /**
- * The "Read it" drill — one theme's words, in Cyrillic, one at a time.
+ * Practise's Read aloud and Meaning — one set's words, one at a time.
+ *
+ * `?way=meaning` turns the card round (`DrillWay`): the English on the face,
+ * the Serbian to be said out loud, and the reveal shows the Cyrillic, the
+ * Latin, the clip and the sentence. It is otherwise this same screen, rule for
+ * rule — runs of twenty, shakiest first, every word always available — with
+ * its own tally, so knowing the Serbian for a word and being able to read it
+ * are two streaks rather than one. With no `way` it is Read aloud, as every
+ * link made before Meaning moved here still expects.
+ *
+ * Read aloud, specifically:
  *
  * The card face shows `sr_cyr` and nothing else. That is the exercise: read the
  * shapes out loud, say what the word means, and only then turn it over to find
@@ -32,10 +42,12 @@ import { practisePool } from '@/lib/practise';
 import {
   MINE_THEME,
   buildRun,
+  parseDrillWay,
   remainingCount,
   runSummary,
   statsByCard,
   themeLabel,
+  type DrillWay,
   type RunTally,
 } from '@/lib/readDrill';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
@@ -46,6 +58,7 @@ import { XP_AWARDS } from '@/lib/xp';
 interface Rating {
   cardId: string;
   gotIt: boolean;
+  way: DrillWay;
 }
 
 /**
@@ -63,7 +76,9 @@ const ANSWER_SETTLE_MS = 250;
 export default function ReadRunScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const params = useLocalSearchParams<{ theme?: string }>();
+  const params = useLocalSearchParams<{ theme?: string; way?: string }>();
+  const way = parseDrillWay(params.way);
+  const meaning = way === 'meaning';
   // A link with no theme on it means the words he already knows — the one theme
   // that is his rather than the deck's, and what the My words header links to.
   const theme = params.theme || MINE_THEME;
@@ -106,7 +121,8 @@ export default function ReadRunScreen() {
     [deck.data, library.data, theme],
   );
 
-  const tallies = useMemo(() => statsByCard(stats.data ?? []), [stats.data]);
+  // This way's tally only: a word read well is not thereby a word he can say.
+  const tallies = useMemo(() => statsByCard(stats.data ?? [], way), [stats.data, way]);
   const loaded = (mine ? library.data : deck.data) !== undefined && stats.data !== undefined;
 
   /**
@@ -133,10 +149,16 @@ export default function ReadRunScreen() {
    * between the answer and the next card.
    */
   const rate = useMutation({
-    mutationFn: ({ cardId, gotIt }: Rating) => api.rateRead(cardId, gotIt),
-    onSuccess: (row) => {
+    mutationFn: ({ cardId, gotIt, way: rowWay }: Rating) => api.rateRead(cardId, gotIt, rowWay),
+    onSuccess: (row, { way: rowWay }) => {
+      // Replace this card's row for this way only. The cache holds both ways'
+      // rows side by side, and matching on the card alone would throw the
+      // other way's tally away until the next refetch.
       queryClient.setQueryData<ReadStatRow[]>(['read-stats'], (current) => [
-        ...(current ?? []).filter((existing) => existing.card_id !== row.card_id),
+        ...(current ?? []).filter(
+          (existing) =>
+            existing.card_id !== row.card_id || (existing.way ?? 'read') !== rowWay,
+        ),
         row,
       ]);
       // The ring and the streak are both read off `xp_events`, which `rate_read`
@@ -167,7 +189,7 @@ export default function ReadRunScreen() {
     settleUntil.current = Date.now() + ANSWER_SETTLE_MS;
     setSettling(true);
 
-    rateRef.current.mutate({ cardId: card.id, gotIt });
+    rateRef.current.mutate({ cardId: card.id, gotIt, way });
     setSeen((current) => new Set(current).add(card.id));
     setTally((current) => ({
       gotIt: current.gotIt + (gotIt ? 1 : 0),
@@ -175,7 +197,7 @@ export default function ReadRunScreen() {
     }));
     setPosition((current) => current + 1);
     setRevealed(false);
-  }, []);
+  }, [way]);
 
   /** Turn the card over — unless an answer has only just been given. */
   const reveal = useCallback(() => {
@@ -296,10 +318,12 @@ export default function ReadRunScreen() {
   if (pool.length === 0) {
     return (
       <View style={styles.centred} testID="read-run-empty">
-        <Text style={styles.summaryTitle}>Nothing to read yet</Text>
+        <Text style={styles.summaryTitle}>
+          {meaning ? 'Nothing to practise yet' : 'Nothing to read yet'}
+        </Text>
         <Text style={styles.muted}>
           {mine
-            ? 'Words land in My words as you learn them — or say “I already know this” on a word in the deck.'
+            ? 'Tick the words you already know in My words, or add one, and they will be here.'
             : 'This theme has no words in it.'}
         </Text>
         <Pressable
@@ -364,10 +388,10 @@ export default function ReadRunScreen() {
             onPress={reveal}
             disabled={revealed || settling}
             accessibilityRole="button"
-            accessibilityLabel="Show what it says"
+            accessibilityLabel={meaning ? 'Show the Serbian' : 'Show what it says'}
             testID="read-card"
           >
-            <WordFace card={card} revealed={revealed} />
+            <WordFace card={card} revealed={revealed} way={way} />
           </Pressable>
 
           {revealed ? (

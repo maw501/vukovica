@@ -10,14 +10,14 @@ leads with:
 | Stage        | Goal                           | Its activity      |
 | ------------ | ------------------------------ | ----------------- |
 | **Alphabet** | master all 30 Cyrillic letters | Letters + Trainer |
-| **Words**    | 100 → 300 → 600 known words    | Review            |
+| **Words**    | 100 → 300 → 600 known words    | Practise          |
 | **Reading**  | 1 → 5 → 20 stories finished    | Reader            |
 | **Books**    | read a real book with his son  | Books             |
 
 The stages are **soft**: nothing is ever locked. A stage only sets the
 dashboard's emphasis — the stage name, one goal line and the primary button —
-and every other activity keeps a row underneath, in stage order. Reviews stay on
-screen at every stage, because they are the daily habit rather than a stage.
+and every other activity keeps a row underneath, in stage order. Practise stays
+on screen at every stage, because it is the daily habit rather than a stage.
 
 **No AI at runtime.** Phase 3 removed every Edge Function and every model call.
 Everything the app shows is either seeded content, something Mark wrote, or
@@ -39,21 +39,29 @@ One Expo app shipped as an installable PWA.
 **Home is three things, not a menu** (2026-09-24, after Mark said eleven equal
 tiles put him off): **Letters** (prominent until all thirty are learned, then a
 one-line link), **Practise** and **My words**, with everything else behind a
-quiet **More** link (Grammar, Reader, Books, Deck, The alphabet, Requests,
-Progress). Every route below still exists.
+quiet **More** link (Grammar, Reader, Books, Deck, Flashcards on a schedule,
+The alphabet, Requests, Progress). Every route below still exists.
 
 - **Practise** (`/practise`) — pick a set of words (My words, or one theme),
-  then one of three ways: **Read aloud** (`/read/run`, see the Cyrillic, say it,
-  check; no scheduling), **Write it** (`/trainer`, Latin → Cyrillic by default,
-  the English underneath) and **Meaning** (`/review`, the scheduled flashcards,
-  limited to the set; the daily new-word cap stays global). The old `/read`
-  picker redirects here.
+  then one of three ways. **None of them is scheduled** (2026-09-24, Mark: "I
+  want to drill all words - I don't want spaced repetition delays at the
+  moment"): every way draws on every word in the set, as often as he likes,
+  shakiest first. **Read aloud** (`/read/run`): see the Cyrillic, say it, check.
+  **Write it** (`/trainer`): Latin → Cyrillic by default, the English
+  underneath; rounds of ten work through the whole set before any word comes
+  round twice. **Meaning** (`/read/run?way=meaning`): see the English, say the
+  Serbian, then check — the Cyrillic, the Latin, the clip and the example on the
+  reveal. Read aloud and Meaning keep separate tallies (`read_stats.way`). With
+  nothing remembered, Practise opens on My words whenever it has any words in
+  it. The old `/read` picker redirects here.
 - **My words** also carries **Tick words you know** (`/library/tick`): browse a
   theme and tap each word already known (`mark_known`), and an **Asked for**
   list of open requests. Quick add (`/add`) files a request when only the
   English is filled in, so Requests no longer needs a tile of its own.
 
-- **Review** — FSRS-scheduled flashcards over the 724-card word deck. Front: the
+- **Flashcards on a schedule** (`/review`, under More) — FSRS-scheduled
+  flashcards over the 724-card word deck, off the everyday path since Practise
+  stopped being scheduled. Front: the
   Cyrillic word plus a speaker button; reveal adds Latin transliteration,
   English, grammar metadata and an example sentence. Four grade buttons. A word
   is "known" once it graduates out of learning into `review`.
@@ -150,7 +158,7 @@ app/                 expo-router routes
   (app)/add.tsx        quick add: two boxes, straight into My words
   (app)/library.tsx    My words: known / still learning, searchable
   (app)/read.tsx       "Read it": pick a theme to read in Cyrillic
-  (app)/read/run.tsx   the read drill (no scheduling; read_stats tallies)
+  (app)/read/run.tsx   Read aloud and Meaning (no scheduling; read_stats tallies)
   (app)/requests.tsx   the capture queue
   (app)/progress.tsx   streak record, XP, every ladder
   (app)/settings.tsx
@@ -166,7 +174,7 @@ lib/                 all the logic worth testing, tests in lib/__tests__/
   books.ts             page numbering, photo validation, object paths
   requests.ts          what counts as a request, and how a tap becomes one
   stages.ts            the progression layer: stage, mastery, goal ladders
-  readDrill.ts         the read drill: run order, themes, the rate_read wire
+  readDrill.ts         Read aloud / Meaning: run order, themes, the rate_read wire
   domains.ts           what a cards.domain is called on screen
   xp.ts                XP awards, levels, the ring's geometry
   streak.ts            streak from review timestamps
@@ -210,7 +218,7 @@ authenticated user, holding both decks (`kind` is `word` or `letter`) — and tw
 more are global seeded content with no owner: `grammar_topics` and
 `grammar_items`. The rest are owner-only, keyed on `auth.uid()`: `user_cards`
 (FSRS state), `review_logs` (append-only), `drill_stats`, `letter_stats` (the
-letters drill's tally), `read_stats` ("Read it"'s), `grammar_stats`, `settings`,
+letters drill's tally), `read_stats` (Read aloud's and Meaning's, one row per way), `grammar_stats`, `settings`,
 `stories`, `books`, `book_pages`, `requests` and `xp_events`.
 
 Two of the seventeen — `chat_messages` and `ai_usage` — are left over from the
@@ -222,12 +230,12 @@ Six RPCs keep a write that spans two rows — or that has to read the row it
 writes — in one transaction: `submit_review` (card state and its log),
 `bump_drill_stats` and `bump_grammar_stats` (per-letter and per-topic counters),
 `rate_letter` (a letter's tally and the XP it earns), `rate_read` (the same for a
-word read aloud in "Read it", tallied in `read_stats`), `mark_known` ("I already
+word in Read aloud or Meaning, tallied in `read_stats` by `p_way`), `mark_known` ("I already
 know this", which parks a word as known and pays no XP at all) and
 `quick_add_word` (the card and that same claim, from two boxes on `/add`; it
 reuses the deck's card if the word is already there and calls `mark_known`
 itself). Every one is `security invoker` with `execute` granted to
-`authenticated` alone and `user_id` taken from `auth.uid()`, so a caller can only
+`authenticated` (and `service_role`) and `user_id` taken from `auth.uid()`, so a caller can only
 ever write its own rows.
 
 `cards.pos`, `cards.example_cyr` and `cards.example_en` default to the empty

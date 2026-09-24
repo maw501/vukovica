@@ -5,7 +5,7 @@ import {
   lettersLeading,
   lettersProgressLine,
   myWordsLine,
-  practiseLine,
+  PRACTISE_LINE,
 } from '@/lib/home';
 import { LETTER_TOTAL } from '@/lib/stages';
 
@@ -43,16 +43,10 @@ describe('lettersProgressLine', () => {
   });
 });
 
-describe('practiseLine', () => {
-  it('counts what is waiting, singular and plural', () => {
-    expect(practiseLine(1)).toBe('1 word waiting today');
-    expect(practiseLine(14)).toBe('14 words waiting today');
-  });
-
-  it('says what practising is when nothing is waiting or the count is missing', () => {
-    expect(practiseLine(0)).toBe('Read, write or learn what words mean');
-    expect(practiseLine(undefined)).toBe('Read, write or learn what words mean');
-    expect(practiseLine(Number.NaN)).toBe('Read, write or learn what words mean');
+describe('PRACTISE_LINE', () => {
+  it('says what practising is, and never that anything is waiting', () => {
+    expect(PRACTISE_LINE).toBe('Read, write or say what words mean');
+    expect(PRACTISE_LINE.toLowerCase()).not.toMatch(/waiting|due|today/);
   });
 });
 

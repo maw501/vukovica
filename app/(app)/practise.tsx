@@ -10,11 +10,13 @@
  * The sets are the Read it picker's, unchanged: "My words" first, then every
  * domain the deck actually has (`buildThemes`), so a new theme shows up the day
  * its first card lands. The last set picked is remembered, so coming back here
- * after a round goes straight to "how?" for the same words.
+ * after a round goes straight to "how?" for the same words; with nothing
+ * remembered it opens on My words whenever that has anything in it
+ * (`initialSet`), because the words he knows are how he learns the Cyrillic.
  *
- * The daily flashcard session keeps its one-tap path at the top: it is the one
- * habit that is about the whole deck rather than a set, and the dashboard's
- * figures say whether there is anything in it.
+ * Nothing here is on a schedule, and nothing here points at the flashcard
+ * queue: every way drills every word in the set, as often as he likes. The
+ * flashcards are still one link away under More.
  */
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -30,12 +32,12 @@ import {
   View,
 } from 'react-native';
 
-import { DEFAULT_NEW_PER_DAY, api, type Theme } from '@/lib/api';
+import { api, type Theme } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import {
   MINE_THEME,
   WAYS,
-  dailyReviewCount,
+  initialSet,
   readLastSet,
   wayHref,
   writeLastSet,
@@ -72,21 +74,24 @@ export default function PractiseScreen() {
           queryClient.fetchQuery({ queryKey: ['library'], queryFn: () => api.getLibrary() }),
       }),
   });
-  // The dashboard's own keys, so the daily line quotes the number home shows
-  // and, arriving from home, costs nothing.
-  const dashboard = useQuery({ queryKey: ['dashboard'], queryFn: () => api.getDashboard() });
-  const settings = useQuery({ queryKey: ['settings'], queryFn: () => api.getSettings() });
-
-  /** The set being practised; null while the list is showing. */
+  /** The set picked on this screen or last time; null for none. */
   const [chosen, setChosen] = useState<string | null>(() => readLastSet());
+  /**
+   * True once "Change" has been tapped. Without it, "Change" on a My words
+   * that was only preselected would put the list up for one render and then
+   * preselect My words straight back.
+   */
+  const [listing, setListing] = useState(false);
 
   const rows = themes.data ?? [];
-  // A remembered set that has since emptied, or disappeared from the deck, is
-  // not a set to offer ways into: fall back to the list.
-  const set = rows.find((theme) => theme.domain === chosen && theme.total > 0) ?? null;
+  // `initialSet` also drops a remembered set that has since emptied or left the
+  // deck: it is not a set to offer ways into.
+  const current = listing ? null : initialSet(chosen, rows);
+  const set = rows.find((theme) => theme.domain === current) ?? null;
 
   const choose = useCallback((theme: Theme) => {
     setChosen(theme.domain);
+    setListing(false);
     writeLastSet(theme.domain);
   }, []);
 
@@ -94,10 +99,6 @@ export default function PractiseScreen() {
     (way: PractiseWay, theme: string) => router.push(wayHref(way, theme)),
     [router],
   );
-
-  const daily = dashboard.data
-    ? dailyReviewCount(dashboard.data, settings.data?.new_per_day ?? DEFAULT_NEW_PER_DAY)
-    : 0;
 
   return (
     <ScrollView
@@ -111,21 +112,6 @@ export default function PractiseScreen() {
       }
     >
       <View style={styles.content}>
-        {daily > 0 ? (
-          <Pressable
-            style={({ pressed }) => [styles.daily, pressed && styles.pressed]}
-            onPress={() => router.push('/review')}
-            accessibilityRole="button"
-            accessibilityLabel={`Today’s flashcards. ${daily} waiting.`}
-            testID="practise-daily"
-          >
-            <Text style={styles.dailyText}>
-              Today’s flashcards · <Text style={styles.dailyCount}>{daily}</Text> waiting
-            </Text>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        ) : null}
-
         {themes.isPending ? (
           <ActivityIndicator color={colors.primary} style={styles.loading} />
         ) : themes.isError ? (
@@ -138,7 +124,7 @@ export default function PractiseScreen() {
             </Pressable>
           </View>
         ) : set ? (
-          <Ways set={set} onChange={() => setChosen(null)} onOpen={open} />
+          <Ways set={set} onChange={() => setListing(true)} onOpen={open} />
         ) : (
           <>
             <Text style={styles.heading}>Which words?</Text>
@@ -254,19 +240,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginTop: spacing.sm,
   },
-  daily: {
-    minHeight: touchTarget,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-  },
-  dailyText: { flexShrink: 1, fontSize: 15, color: colors.text },
-  dailyCount: { fontWeight: '700', color: colors.primary },
   row: {
     minHeight: touchTarget + 8,
     flexDirection: 'row',

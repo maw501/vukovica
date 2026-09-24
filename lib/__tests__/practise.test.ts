@@ -5,12 +5,9 @@ import {
   LAST_SET_KEY,
   MINE_THEME,
   WAYS,
-  dailyReviewCount,
-  inQueueScope,
-  meaningEmptyMessage,
+  initialSet,
   parseTheme,
   practisePool,
-  queueScope,
   readLastSet,
   setLabel,
   wayHref,
@@ -84,16 +81,60 @@ describe('WAYS and wayHref', () => {
   it('offers the three ways in order, with no jargon in the copy', () => {
     expect(WAYS.map((option) => option.label)).toEqual(['Read aloud', 'Write it', 'Meaning']);
     const copy = WAYS.map((option) => `${option.label} ${option.blurb}`).join(' ').toLowerCase();
-    for (const word of ['spaced', 'repetition', 'srs', 'fsrs', 'transliterat']) {
+    for (const word of ['spaced', 'repetition', 'srs', 'fsrs', 'transliterat', 'flashcard']) {
       expect(copy).not.toContain(word);
     }
+  });
+
+  it('describes Meaning as the English-first drill, not a schedule', () => {
+    const meaning = WAYS.find((option) => option.way === 'meaning');
+    expect(meaning?.blurb).toBe('See the English, say the Serbian, then check.');
   });
 
   it('opens each way on the set, encoded once', () => {
     expect(wayHref('read', 'family')).toBe('/read/run?theme=family');
     expect(wayHref('write', MINE_THEME)).toBe('/trainer?theme=mine');
-    expect(wayHref('meaning', 'numbers-time')).toBe('/review?theme=numbers-time');
-    expect(wayHref('meaning', 'a b&c')).toBe('/review?theme=a%20b%26c');
+    expect(wayHref('meaning', 'numbers-time')).toBe('/read/run?way=meaning&theme=numbers-time');
+    expect(wayHref('meaning', 'a b&c')).toBe('/read/run?way=meaning&theme=a%20b%26c');
+  });
+
+  it('never sends a way to the flashcard queue', () => {
+    for (const option of WAYS) {
+      expect(wayHref(option.way, 'family')).not.toMatch(/^\/review/);
+    }
+  });
+});
+
+describe('initialSet', () => {
+  const sets = [
+    { domain: MINE_THEME, total: 3 },
+    { domain: 'family', total: 20 },
+    { domain: 'food', total: 0 },
+  ];
+
+  it('opens on the set picked last time while it has words', () => {
+    expect(initialSet('family', sets)).toBe('family');
+    expect(initialSet(MINE_THEME, sets)).toBe(MINE_THEME);
+  });
+
+  it('opens on My words when nothing was remembered and My words has any', () => {
+    expect(initialSet(null, sets)).toBe(MINE_THEME);
+  });
+
+  it('treats a remembered set that has emptied or gone as not remembered', () => {
+    expect(initialSet('food', sets)).toBe(MINE_THEME);
+    expect(initialSet('animals', sets)).toBe(MINE_THEME);
+  });
+
+  it('shows the list when there is neither', () => {
+    const noMine = [
+      { domain: MINE_THEME, total: 0 },
+      { domain: 'family', total: 20 },
+    ];
+    expect(initialSet(null, noMine)).toBeNull();
+    expect(initialSet('animals', noMine)).toBeNull();
+    // Still loading: no sets at all.
+    expect(initialSet('family', [])).toBeNull();
   });
 });
 
@@ -122,64 +163,23 @@ describe('practisePool', () => {
     ]);
     expect(practisePool({ theme: MINE_THEME, cards })).toEqual([]);
   });
-});
 
-describe('queueScope and inQueueScope', () => {
-  const family = wordCard('f', 'family');
-  const food = wordCard('g', 'food');
-
-  it('lets everything through with no theme — the daily session, unchanged', () => {
-    const scope = queueScope(null);
-    expect(scope).toEqual({ domain: null, knownOnly: false, includeNew: true });
-    expect(inQueueScope(scope, family, null)).toBe(true);
-    expect(inQueueScope(scope, food, userCard('g', 'learning'))).toBe(true);
-  });
-
-  it('keeps a domain theme to that domain, due and new alike', () => {
-    const scope = queueScope('family');
-    expect(scope).toEqual({ domain: 'family', knownOnly: false, includeNew: true });
-    expect(inQueueScope(scope, family, null)).toBe(true);
-    expect(inQueueScope(scope, family, userCard('f', 'relearning'))).toBe(true);
-    expect(inQueueScope(scope, food, null)).toBe(false);
-    expect(inQueueScope(scope, food, userCard('g', 'review'))).toBe(false);
-  });
-
-  // `getQueue`'s `.eq` has already excluded such a row by the time this runs;
-  // the check only has to agree with the picker's trimmed rule, not rescue it.
-  it('compares domains trimmed, agreeing with the picker', () => {
-    expect(inQueueScope(queueScope('family'), { domain: 'family ' }, null)).toBe(true);
-  });
-
-  it('keeps mine to known words and never introduces a new card', () => {
-    const scope = queueScope(MINE_THEME);
-    expect(scope).toEqual({ domain: null, knownOnly: true, includeNew: false });
-    expect(inQueueScope(scope, food, userCard('g', 'review'))).toBe(true);
-    expect(inQueueScope(scope, food, userCard('g', 'learning'))).toBe(false);
-    expect(inQueueScope(scope, food, userCard('g', 'relearning'))).toBe(false);
-    expect(inQueueScope(scope, food, null)).toBe(false);
-  });
-});
-
-describe('meaningEmptyMessage', () => {
-  it('keeps the daily session’s message with no theme', () => {
-    expect(meaningEmptyMessage(null, 0)).toMatch(/^No cards are due right now/);
-  });
-
-  it('says today’s new words are used up rather than "try another set" in circles', () => {
-    const message = meaningEmptyMessage('family', 0);
-    expect(message).toMatch(/today’s new words/);
-    expect(message).toMatch(/tomorrow/);
-    expect(message).not.toMatch(/another set/);
-  });
-
-  it('names the set when there was allowance left and still nothing to do', () => {
-    expect(meaningEmptyMessage('family', 4)).toBe(
-      'Nothing from Family to go over right now. Come back later, or try another set.',
-    );
-  });
-
-  it('never blames the allowance for My words, which never takes new cards', () => {
-    expect(meaningEmptyMessage(MINE_THEME, 0)).toMatch(/^None of your words/);
+  // Mark: ticking a word must never take it out of a drill. A theme's set is
+  // the whole theme, whatever he has ticked; ticking only adds to My words.
+  it('keeps a ticked word in its theme’s set, and adds it to My words', () => {
+    const family = [wordCard('a'), wordCard('b')];
+    const library = [entry(family[0], 'review')];
+    expect(practisePool({ theme: 'family', cards: family, library }).map((c) => c.id)).toEqual([
+      'a',
+      'b',
+    ]);
+    expect(practisePool({ theme: null, cards: family, library }).map((c) => c.id)).toEqual([
+      'a',
+      'b',
+    ]);
+    expect(practisePool({ theme: MINE_THEME, cards: family, library }).map((c) => c.id)).toEqual([
+      'a',
+    ]);
   });
 });
 
@@ -194,17 +194,6 @@ describe('writeItEmptyMessage', () => {
       'Phrases has no single words to type. Pick another set.',
     );
     expect(writeItEmptyMessage(null, 0)).toMatch(/^There are no single words in the deck/);
-  });
-});
-
-describe('dailyReviewCount', () => {
-  it('is due cards plus what is left of today’s new ones', () => {
-    expect(dailyReviewCount({ dueCount: 5, newAvailable: 100, newDoneToday: 3 }, 10)).toBe(12);
-  });
-
-  it('never offers more new cards than the deck has left, nor goes negative', () => {
-    expect(dailyReviewCount({ dueCount: 0, newAvailable: 2, newDoneToday: 0 }, 10)).toBe(2);
-    expect(dailyReviewCount({ dueCount: 0, newAvailable: 50, newDoneToday: 15 }, 10)).toBe(0);
   });
 });
 

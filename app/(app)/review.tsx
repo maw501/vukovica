@@ -14,10 +14,12 @@
  * `/review?deck=letters` still works: it redirects there, so every link and
  * bookmark that was made while the deck existed still lands somewhere sensible.
  *
- * `?theme=` is Practise's "Meaning": the same session over one set of words
- * (`lib/practise.ts`) — due and new cards from that theme only, or only the
- * known words for `mine`. Grading, scheduling and XP do not know the difference.
- * With no theme this is the daily session it has always been.
+ * This is no longer on the everyday path. Practise's "Meaning" used to be this
+ * session over one set of words; Mark asked to drill every word with no
+ * waiting, so Meaning is now an unscheduled drill (`app/(app)/read/run.tsx`,
+ * `way=meaning`) and this screen is reached from More as "Flashcards on a
+ * schedule". A `?theme=` left on an old link is ignored: it is the one daily
+ * session over the whole deck, as it was before Practise existed.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -40,7 +42,6 @@ import { confirmAction } from '@/lib/confirm';
 import { errorMessage } from '@/lib/errors';
 import { formatInterval } from '@/lib/format';
 import { gradeIntervals, newUserCard, type ReviewGrade } from '@/lib/fsrs';
-import { meaningEmptyMessage, parseTheme, setLabel } from '@/lib/practise';
 import {
   answerCurrent,
   createSession,
@@ -61,6 +62,9 @@ const GRADES: { grade: ReviewGrade; label: string; colour: string }[] = [
   { grade: 3, label: 'Good', colour: colors.primary },
   { grade: 4, label: 'Easy', colour: '#2F7A4D' },
 ];
+
+const NOTHING_DUE =
+  'No cards are due right now. Come back later, or add new words to the deck.';
 
 
 /**
@@ -102,20 +106,12 @@ export default function ReviewScreen() {
   // still read, for one purpose only: sending an old link to the drill that
   // replaced it. Every other value (including none at all) is the word deck,
   // which is now the only deck there is.
-  const params = useLocalSearchParams<{ deck?: string; theme?: string }>();
+  const params = useLocalSearchParams<{ deck?: string }>();
   const wantsLetters = (Array.isArray(params.deck) ? params.deck[0] : params.deck) === 'letters';
-  const theme = parseTheme(params.theme);
 
-  /**
-   * The theme is part of the key so a Family session and the daily one never
-   * share a cached queue. Everything that invalidates `['queue']` still reaches
-   * both: that is a prefix match.
-   */
-  // `null` rather than a sentinel string: a string could one day be a domain.
-  const queueKey = useMemo(() => ['queue', theme] as const, [theme]);
   const queue = useQuery({
-    queryKey: queueKey,
-    queryFn: () => api.getQueue(new Date(), theme),
+    queryKey: ['queue'],
+    queryFn: () => api.getQueue(),
     // Always refetched on mount (the root default is 30s), never mid-session:
     // a session that reshuffled itself under the user's thumb would be worse
     // than a slightly stale one.
@@ -175,7 +171,7 @@ export default function ReviewScreen() {
   // session so a later refetch cannot make the card on screen disappear.
   useEffect(() => {
     if (!queue.data || queue.isFetching || session !== null) return;
-    const { entries: queued } = queue.data;
+    const queued = queue.data;
     setEntries(new Map(queued.map((entry) => [entry.cardId, entry])));
     latestRows.current = new Map(queued.map((entry) => [entry.cardId, entry.userCard]));
     answered.current = new Set();
@@ -371,13 +367,9 @@ export default function ReviewScreen() {
    */
   const goHome = useCallback(async () => {
     await submitChain.current;
-    // A themed session was opened from Practise, and that is where "done"
-    // goes — popping back to it when it is on the stack, landing on it when
-    // this was a deep link.
-    if (theme !== null) router.dismissTo('/practise');
-    else if (router.canGoBack()) router.back();
+    if (router.canGoBack()) router.back();
     else router.replace('/');
-  }, [router, theme]);
+  }, [router]);
 
   /**
    * Start a fresh session against the *current* database state.
@@ -393,23 +385,17 @@ export default function ReviewScreen() {
   const restart = useCallback(() => {
     setRestarting(true);
     void submitChain.current
-      .then(() => queryClient.refetchQueries({ queryKey: queueKey, exact: true }))
+      .then(() => queryClient.refetchQueries({ queryKey: ['queue'], exact: true }))
       .then(() => {
         // A refetch that failed leaves the old data in place; rebuilding from it
         // is exactly what this function exists to avoid. The query's own error
         // state renders instead.
-        if (queryClient.getQueryState(queueKey)?.status === 'error') return;
+        if (queryClient.getQueryState(['queue'])?.status === 'error') return;
         setSession(null);
         setRevealed(false);
       })
       .finally(() => setRestarting(false));
-  }, [queryClient, queueKey]);
-
-  // From Practise this is "Meaning", the name it was picked by; the daily
-  // session keeps the layout's "Review".
-  useEffect(() => {
-    if (theme !== null) navigation.setOptions({ title: 'Meaning' });
-  }, [navigation, theme]);
+  }, [queryClient]);
 
   // Every hook above has run before this, deliberately: a redirect returned
   // from the middle of the hook list would change the order between renders.
@@ -448,9 +434,7 @@ export default function ReviewScreen() {
       <Summary
         session={session}
         markedKnown={markedKnown}
-        emptyMessage={meaningEmptyMessage(theme, queue.data?.newLeftToday ?? 0)}
-        setName={theme !== null ? setLabel(theme) : null}
-        doneLabel={theme !== null ? 'Back to Practise' : 'Back to the dashboard'}
+        emptyMessage={NOTHING_DUE}
         onDone={() => void goHome()}
         onMore={restart}
         restarting={restarting}
@@ -485,11 +469,6 @@ export default function ReviewScreen() {
           {entry.isNew ? (
             <Text style={styles.newBadge} testID="new-badge">
               new
-            </Text>
-          ) : null}
-          {theme !== null ? (
-            <Text style={styles.setName} testID="review-set-name">
-              {setLabel(theme)}
             </Text>
           ) : null}
         </View>
@@ -685,8 +664,6 @@ function Summary({
   session,
   markedKnown,
   emptyMessage,
-  setName,
-  doneLabel,
   onDone,
   onMore,
   restarting,
@@ -701,9 +678,6 @@ function Summary({
    * deck, before the seed migration has run anywhere.
    */
   emptyMessage: string;
-  /** The Practise set this session was over, named under the title; null for the daily one. */
-  setName: string | null;
-  doneLabel: string;
   onDone: () => void;
   onMore: () => void;
   /** The queue is being refetched; a new session appears when it lands. */
@@ -721,11 +695,6 @@ function Summary({
     <ScrollView contentContainerStyle={styles.scroll}>
       <View style={styles.content} testID="summary">
         <Text style={styles.summaryTitle}>{didSomething ? 'Well done!' : 'Nothing to study'}</Text>
-        {setName !== null ? (
-          <Text style={styles.summarySet} testID="summary-set">
-            {setName}
-          </Text>
-        ) : null}
         {/* Each line only when it has something to say: a session spent
             entirely marking words known has no answers to count, and
             "0 answers in this session" under "Well done!" is a worse thing to
@@ -774,7 +743,7 @@ function Summary({
           accessibilityRole="button"
           testID="summary-done"
         >
-          <Text style={styles.revealButtonText}>{doneLabel}</Text>
+          <Text style={styles.revealButtonText}>Back to the dashboard</Text>
         </Pressable>
         <Pressable
           style={styles.textButton}
@@ -809,7 +778,6 @@ const styles = StyleSheet.create({
   },
   progressRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   progress: { fontSize: 13, color: colors.textMuted },
-  setName: { fontSize: 13, color: colors.textMuted, fontWeight: '600' },
   newBadge: {
     fontSize: 11,
     textTransform: 'uppercase',
@@ -895,7 +863,6 @@ const styles = StyleSheet.create({
   bannerButton: { minHeight: touchTarget - 12, justifyContent: 'center', paddingHorizontal: spacing.sm },
   bannerButtonText: { color: colors.primary, fontSize: 15, fontWeight: '600' },
   summaryTitle: { fontSize: 32, fontWeight: '700', color: colors.text, textAlign: 'center' },
-  summarySet: { fontSize: 15, fontWeight: '600', color: colors.text, textAlign: 'center' },
   summarySubtitle: { fontSize: 15, color: colors.textMuted, textAlign: 'center' },
   summaryRow: { flexDirection: 'row', gap: spacing.sm },
   summaryStat: {

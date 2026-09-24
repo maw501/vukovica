@@ -12,10 +12,16 @@
  * Two views on one route: with no `theme` it lists the themes and how much of
  * each is known; with one, it lists that theme's words.
  *
+ * Ticking only ever *adds*: the word joins My words, and so the My words set in
+ * Practise. It takes nothing away — a theme's set is every word in the theme,
+ * known or not (`practisePool`), and the drills' tallies do not look at
+ * `user_cards` at all. Under the hood `mark_known` also parks the word in the
+ * flashcard schedule for a while, but the flashcards are off the everyday path
+ * (under More), so nothing on screen here says so.
+ *
  * There is no un-tick. The app has no way to take a word back out of My words
  * (only `mark_known`, no inverse), and adding one is SQL this change does not
- * need: a mis-tapped word is parked, not lost, and comes back round in review
- * in a few months, where a wrong answer puts it back into learning.
+ * need: a mis-tapped word costs nothing but a line in My words.
  */
 
 import {
@@ -231,8 +237,7 @@ function ThemeWords({
             {knownOfLine(knownHere, words.length)}
           </Text>
           <Text style={styles.muted}>
-            Tap the words you already know. Ticked one by mistake? It will come back round in a
-            few months to check.
+            Tap the words you already know. Each one goes into My words, ready to practise.
           </Text>
           {failure ? (
             <Text style={styles.error} testID="tick-failure">

@@ -29,7 +29,6 @@ import {
   markKnownParams,
   type LibraryEntry,
 } from "@/lib/library";
-import { inQueueScope, queueScope } from "@/lib/practise";
 import { buildQueue } from "@/lib/queue";
 import {
   QUICK_ADD_FN,
@@ -41,6 +40,7 @@ import {
   buildThemes,
   rateReadParams,
   statsByCard,
+  type DrillWay,
   type Theme,
 } from "@/lib/readDrill";
 import { SUBMIT_REVIEW_FN, submitReviewParams } from "@/lib/reviewRpc";
@@ -393,20 +393,6 @@ export interface QueueEntry {
 }
 
 /**
- * A session's cards, and what was left of today's new-word allowance when they
- * were chosen.
- *
- * The allowance travels with the queue because an empty *themed* session has
- * two very different causes — nothing in the set needs going over, or today's
- * new words have all been met elsewhere — and only the second is fixed by
- * coming back tomorrow. The screen has to be able to say which.
- */
-export interface Queue {
-  entries: QueueEntry[];
-  newLeftToday: number;
-}
-
-/**
  * PostgREST caps a response at `max_rows` (1000). Both the studied-ids read and
  * the new-card candidate read stay well inside that for a ~700-card deck; if the
  * deck ever outgrows it, they need paginating (the counts would silently
@@ -449,8 +435,6 @@ function embeddedCard(row: DueJoinRow): CardRow | null {
 async function fetchNewCards(
   userId: string,
   allowance: number,
-  /** Only cards in this `cards.domain` — a Practise set. Null for the deck. */
-  domain: string | null = null,
 ): Promise<CardRow[]> {
   if (allowance <= 0) return [];
 
@@ -463,18 +447,12 @@ async function fetchNewCards(
     (studied.data ?? []).map((row) => row.card_id as string),
   );
 
-  let candidateQuery = supabase
+  const candidates = await supabase
     .from("cards")
     .select("*")
     // The deck filter. Without it the letters would queue themselves as word
     // cards, which is exactly the arrangement this app has just left behind.
-    .eq("kind", WORD_KIND);
-  // A themed session introduces that theme's words and no others. The limit
-  // below stays an upper bound: at most `seen.size` of these can be ones
-  // already studied, whatever domain those were in.
-  if (domain !== null) candidateQuery = candidateQuery.eq("domain", domain);
-
-  const candidates = await candidateQuery
+    .eq("kind", WORD_KIND)
     // Words the user added come first (`created_by` is null for seed rows):
     // someone who has just typed in a word wants it in today's session, not in
     // two months' time once the seed deck has been worked through.
@@ -500,41 +478,26 @@ async function fetchNewCards(
  * New cards deliberately arrive with `userCard: null` — no row is written until
  * the card is actually graded, so an introduced-but-unanswered card stays out of
  * both the due count and the daily allowance.
- *
- * `theme` is a Practise set (`lib/practise.ts`): a domain keeps both the due and
- * the new cards to that domain, `mine` keeps the session to known words that
- * are due. The day's new-card budget is still the whole day's — `newDoneToday`
- * is counted across every set — so choosing a theme is a way of picking which
- * new words arrive, never a way of getting more of them. No theme is the daily
- * session, exactly as before.
  */
-async function getQueue(
-  now: Date = new Date(),
-  theme: string | null = null,
-): Promise<Queue> {
+async function getQueue(now: Date = new Date()): Promise<QueueEntry[]> {
   const userId = await requireUserId();
   const kind = WORD_KIND;
-  const scope = queueScope(theme);
-
-  let dueQuery = supabase
-    .from("user_cards")
-    // `!inner` rather than a plain embed so the deck filter below can apply to
-    // the joined card. The FK is `not null`, so the join drops nothing.
-    .select("*, cards!inner(*)")
-    .eq("user_id", userId)
-    .eq("cards.kind", kind)
-    // Matches the dashboard's `dueCount`. Under lazy insertion a `new` row
-    // cannot exist, but if one ever did, counting it here and not there would
-    // make "Due 0" open a session with cards in it.
-    .neq("state", "new")
-    .lte("due", now.toISOString());
-  if (scope.domain !== null) dueQuery = dueQuery.eq("cards.domain", scope.domain);
-  if (scope.knownOnly) dueQuery = dueQuery.eq("state", "review");
 
   const [settings, newDoneToday, dueResult] = await Promise.all([
     getSettings(),
     countNewDoneToday(userId, now),
-    dueQuery
+    supabase
+      .from("user_cards")
+      // `!inner` rather than a plain embed so the deck filter below can apply to
+      // the joined card. The FK is `not null`, so the join drops nothing.
+      .select("*, cards!inner(*)")
+      .eq("user_id", userId)
+      .eq("cards.kind", kind)
+      // Matches the dashboard's `dueCount`. Under lazy insertion a `new` row
+      // cannot exist, but if one ever did, counting it here and not there would
+      // make "Due 0" open a session with cards in it.
+      .neq("state", "new")
+      .lte("due", now.toISOString())
       .order("due", { ascending: true })
       .limit(MAX_ROWS)
       .returns<DueJoinRow[]>(),
@@ -555,31 +518,20 @@ async function getQueue(
     // letters are not reviewed here at all any more.
     if (card.kind !== kind) continue;
     const { cards: _embedded, ...userCard } = row;
-    // The same belt for the set: the filters above already asked for this.
-    if (!inQueueScope(scope, card, userCard)) continue;
     dueCards.push(userCard);
     byId.set(card.id, { cardId: card.id, isNew: false, card, userCard });
   }
 
-  const newCards = scope.includeNew
-    ? (
-        await fetchNewCards(
-          userId,
-          Math.max(0, newPerDay - newDoneToday),
-          scope.domain,
-        )
-      ).filter(
-        (card) => card.kind === kind && inQueueScope(scope, card, null),
-      )
-    : [];
+  const newCards = (
+    await fetchNewCards(userId, Math.max(0, newPerDay - newDoneToday))
+  ).filter((card) => card.kind === kind);
   for (const card of newCards) {
     byId.set(card.id, { cardId: card.id, isNew: true, card, userCard: null });
   }
 
-  const entries = buildQueue({ dueCards, newCards, newPerDay, newDoneToday })
+  return buildQueue({ dueCards, newCards, newPerDay, newDoneToday })
     .map((item) => byId.get(item.cardId))
     .filter((entry): entry is QueueEntry => entry !== undefined);
-  return { entries, newLeftToday: Math.max(0, newPerDay - newDoneToday) };
 }
 
 export interface SubmitReviewArgs {
@@ -990,9 +942,12 @@ async function listReadStats(): Promise<ReadStatRow[]> {
     const { data, error } = await supabase
       .from("read_stats")
       .select("*")
-      // Redundant under RLS, but it is what makes this a primary-key range.
+      // Redundant under RLS, but it scopes the range to one user's key.
       .eq("user_id", userId)
+      // A word can have a row per way, so ordering by card alone leaves the
+      // pair's order open at a page edge and one row can be skipped or repeated.
       .order("card_id", { ascending: true })
+      .order("way", { ascending: true })
       .range(from, from + READ_STATS_PAGE_SIZE - 1)
       .returns<ReadStatRow[]>();
     if (error) throw error;
@@ -1005,7 +960,7 @@ async function listReadStats(): Promise<ReadStatRow[]> {
 }
 
 /**
- * Record one reading of one word, and the XP it earns.
+ * Record one answer in the Read aloud or Meaning drill, and the XP it earns.
  *
  * Through `rate_read` rather than an upsert for the two reasons `rateLetter`
  * gives: PostgREST's upsert *replaces* a count where this has to add to it, and
@@ -1013,9 +968,13 @@ async function listReadStats(): Promise<ReadStatRow[]> {
  * are both read off `xp_events`, so a reading that tallied but did not pay
  * would be a reading that did not happen as far as the dashboard is concerned.
  */
-async function rateRead(cardId: string, gotIt: boolean): Promise<ReadStatRow> {
+async function rateRead(
+  cardId: string,
+  gotIt: boolean,
+  way: DrillWay,
+): Promise<ReadStatRow> {
   const { data, error } = await supabase
-    .rpc(RATE_READ_FN, rateReadParams(cardId, gotIt))
+    .rpc(RATE_READ_FN, rateReadParams(cardId, gotIt, way))
     // The function returns `public.read_stats`, i.e. one row rather than a set,
     // so PostgREST answers with a bare object -- `.single()` is what tells
     // supabase-js to type it as one.

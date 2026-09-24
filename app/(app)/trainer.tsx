@@ -19,6 +19,11 @@
  * `?theme=` narrows the words to one Practise set (`lib/practise.ts`): a
  * domain, or `mine` for the words already known. No theme is the whole deck.
  * The letter weighting works inside whichever pool it is given.
+ *
+ * No schedule, and nothing is held back: every word in the set is always
+ * available. Within one sitting "Another round" draws only from the words not
+ * had yet (`sittingPool`), so ten at a time works through the whole set before
+ * any word comes round twice — then it starts over.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -42,6 +47,8 @@ import {
   cyrillicInput,
   mergeDrillStats,
   pickDrillWords,
+  sittingPool,
+  unseenDrillableCount,
   scoreAttempt,
   segmentExpected,
   tallyAttempts,
@@ -144,6 +151,8 @@ export default function TrainerScreen() {
   const [results, setResults] = useState<LetterResult[][]>([]);
   /** Letter counts whose write failed, kept so they can be retried. */
   const [unsaved, setUnsaved] = useState<LetterDelta[][]>([]);
+  /** Every word this sitting's rounds have held, so the next round moves on. */
+  const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set());
 
   const inputRef = useRef<TextInput>(null);
   /** Writes run one after another, so two words never race for a letter's row. */
@@ -177,8 +186,15 @@ export default function TrainerScreen() {
     if (!words.data || !stats.data) return;
     if (words.isFetching || stats.isFetching) return;
     masteredAtRoundStart.current = masteredLetters(stats.data);
-    setRound(pickDrillWords(pool, stats.data, ROUND_SIZE));
-  }, [pool, round, stats.data, stats.isFetching, words.data, words.isFetching]);
+    const from = sittingPool(pool, seen);
+    const next = pickDrillWords(from.cards, stats.data, ROUND_SIZE);
+    setRound(next);
+    setSeen((current) => {
+      const updated = new Set(from.restarted ? [] : current);
+      for (const word of next) updated.add(word.id);
+      return updated;
+    });
+  }, [pool, round, seen, stats.data, stats.isFetching, words.data, words.isFetching]);
 
   const save = useMutation({
     mutationFn: (deltas: LetterDelta[]) => {
@@ -266,8 +282,10 @@ export default function TrainerScreen() {
     (next_: Mode) => {
       if (next_ === mode) return;
       setMode(next_);
-      // A round is built for one direction; switching restarts it. Nothing is
-      // lost — every word answered so far is already in the database.
+      // A round is built for one direction; switching restarts it, and the
+      // sitting with it — the other direction has had none of these words.
+      // Nothing is lost: every word answered so far is already in the database.
+      setSeen(new Set());
       startRound();
     },
     [mode, startRound],
@@ -398,6 +416,8 @@ export default function TrainerScreen() {
 
   if (!card) {
     const right = results.filter((perLetter) => perLetter.every((entry) => entry.correct)).length;
+    const left = unseenDrillableCount(pool, seen);
+    const setName = setLabel(theme);
     return (
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={styles.content} testID="drill-summary">
@@ -413,6 +433,11 @@ export default function TrainerScreen() {
               {setLabel(theme)}
             </Text>
           ) : null}
+          <Text style={styles.summarySubtitle} testID="drill-left">
+            {left > 0
+              ? `${left} more ${left === 1 ? 'word' : 'words'} in ${setName}`
+              : `That is every word in ${setName} — go round again whenever you like.`}
+          </Text>
 
           {masteryBar}
 
