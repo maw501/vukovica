@@ -13,7 +13,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Pressable,
@@ -37,13 +37,6 @@ import {
 import { LETTER_TOTAL } from '@/lib/stages';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
 import { DAILY_GOAL } from '@/lib/xp';
-
-/**
- * Where Practise lives. Built alongside this screen; typed as an `Href` here so
- * that until the route exists in the generated types this is one cast, not one
- * per use.
- */
-const PRACTISE_HREF = '/practise' as Href;
 
 export default function DashboardScreen() {
   const router = useRouter();
@@ -124,7 +117,7 @@ export default function DashboardScreen() {
           // The main thing once the letters are done; a strong second before.
           primary={!leading}
           testID="home-practise"
-          onPress={() => router.push(PRACTISE_HREF)}
+          onPress={() => router.push('/practise')}
         />
 
         <MyWordsCard

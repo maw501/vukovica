@@ -36,6 +36,23 @@ that keeps the app navigable while the language being learned stays hard.
 
 One Expo app shipped as an installable PWA.
 
+**Home is three things, not a menu** (2026-09-24, after Mark said eleven equal
+tiles put him off): **Letters** (prominent until all thirty are learned, then a
+one-line link), **Practise** and **My words**, with everything else behind a
+quiet **More** link (Grammar, Reader, Books, Deck, The alphabet, Requests,
+Progress). Every route below still exists.
+
+- **Practise** (`/practise`) — pick a set of words (My words, or one theme),
+  then one of three ways: **Read aloud** (`/read/run`, see the Cyrillic, say it,
+  check; no scheduling), **Write it** (`/trainer`, Latin → Cyrillic by default,
+  the English underneath) and **Meaning** (`/review`, the scheduled flashcards,
+  limited to the set; the daily new-word cap stays global). The old `/read`
+  picker redirects here.
+- **My words** also carries **Tick words you know** (`/library/tick`): browse a
+  theme and tap each word already known (`mark_known`), and an **Asked for**
+  list of open requests. Quick add (`/add`) files a request when only the
+  English is filled in, so Requests no longer needs a tile of its own.
+
 - **Review** — FSRS-scheduled flashcards over the 724-card word deck. Front: the
   Cyrillic word plus a speaker button; reveal adds Latin transliteration,
   English, grammar metadata and an example sentence. Four grade buttons. A word

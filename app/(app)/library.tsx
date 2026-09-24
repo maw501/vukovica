@@ -22,7 +22,7 @@
  */
 
 import { useQuery } from "@tanstack/react-query";
-import { useRouter, type Href } from "expo-router";
+import { useRouter } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -69,12 +69,6 @@ const SORTS: { key: LibrarySort; label: string }[] = [
   { key: "recent", label: "Newest" },
   { key: "alpha", label: "A–Z" },
 ];
-
-/**
- * Where Practise lives. Typed as an `Href` once, here, for as long as the route
- * is newer than the generated route types.
- */
-const PRACTISE_HREF = "/practise" as Href;
 
 /** How many unanswered requests the "Asked for" list shows before "See all". */
 const ASKED_FOR_LIMIT = 5;
@@ -237,7 +231,7 @@ export default function LibraryScreen() {
                 choices. */}
             <Pressable
               style={styles.readLink}
-              onPress={() => router.push(PRACTISE_HREF)}
+              onPress={() => router.push("/practise")}
               accessibilityRole="button"
               testID="library-practise-link"
             >
