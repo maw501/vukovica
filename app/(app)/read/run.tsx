@@ -147,7 +147,7 @@ export default function ReadRunScreen() {
       void queryClient.invalidateQueries({ queryKey: ['xp'] });
       void queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       // The picker's "N words · M solid" is counted from these same tallies, but
-      // it is deliberately NOT refreshed here. `/read` is still mounted under
+      // it is deliberately NOT refreshed here. `/practise` is still mounted under
       // this screen, so an invalidation would refetch it there and then — and
       // that query reads the whole deck and the whole of My words, which is
       // three requests and something like fifteen hundred rows between one card
@@ -222,9 +222,12 @@ export default function ReadRunScreen() {
     setRun(null);
   }, [left, retryFailures]);
 
+  // Back to Practise, which is where every run now starts: popped to when it
+  // is on the stack (the usual case), landed on after a deep link — rather
+  // than a `replace` that would leave two Practise screens stacked up.
   const done = useCallback(() => {
     retryFailures();
-    router.replace('/read');
+    router.dismissTo('/practise');
   }, [retryFailures, router]);
 
   /**
@@ -303,11 +306,11 @@ export default function ReadRunScreen() {
         </Text>
         <Pressable
           style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
-          onPress={() => router.replace('/read')}
+          onPress={() => router.dismissTo('/practise')}
           accessibilityRole="button"
           testID="read-run-pick"
         >
-          <Text style={styles.primaryButtonText}>Pick another theme</Text>
+          <Text style={styles.primaryButtonText}>Pick other words</Text>
         </Pressable>
       </View>
     );

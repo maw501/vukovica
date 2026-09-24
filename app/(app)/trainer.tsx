@@ -10,10 +10,20 @@
  * The round is snapshotted into state when it starts and never rebuilt under
  * the user's thumb: the letter counts change with every answer, but the words
  * in front of the user do not.
+ *
+ * This is Practise's "Write it", so it opens the way round that is *writing*:
+ * the English on top, the Cyrillic typed below. The Latin spelling used to be
+ * the prompt in that direction, which made it a transliteration exercise — a
+ * letter-for-letter swap that never asks what the word is. It is one tap away
+ * instead, for the words not yet known well enough to spell from the meaning.
+ *
+ * `?theme=` narrows the words to one Practise set (`lib/practise.ts`): a
+ * domain, or `mine` for the words already known. No theme is the whole deck.
+ * The letter weighting works inside whichever pool it is given.
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -42,6 +52,7 @@ import {
   type LetterResult,
 } from '@/lib/drills';
 import { errorMessage } from '@/lib/errors';
+import { MINE_THEME, parseTheme, practisePool, setLabel } from '@/lib/practise';
 import { LETTER_TOTAL, masteredLetters } from '@/lib/stages';
 import type { ScriptRole } from '@/lib/script';
 import { colors, contentMaxWidth, radius, script, spacing, touchTarget } from '@/lib/theme';
@@ -56,19 +67,19 @@ const SUMMARY_LETTERS = 5;
 /** Which way round the drill runs. */
 type Mode = 'cyr-lat' | 'lat-cyr';
 
+/**
+ * Writing first, because that is what "Write it" promises. The labels name
+ * what gets typed: the prompt in the writing direction is the English now, so
+ * "Latin → Cyrillic" would no longer describe it.
+ */
 const MODES: { mode: Mode; label: string; hint: string }[] = [
-  { mode: 'cyr-lat', label: 'Cyrillic → Latin', hint: 'Read the Cyrillic, type the Latin' },
-  { mode: 'lat-cyr', label: 'Latin → Cyrillic', hint: 'Read the Latin, type the Cyrillic' },
+  { mode: 'lat-cyr', label: 'Type Cyrillic', hint: 'See the English, type it in Cyrillic' },
+  { mode: 'cyr-lat', label: 'Type Latin', hint: 'Read the Cyrillic, type the Latin' },
 ];
 
 /** The answer the user is being asked for, in the script they must type it in. */
 function expectedAnswer(card: CardRow, mode: Mode): string {
   return mode === 'cyr-lat' ? cyrToLat(card.sr_cyr) : card.sr_cyr;
-}
-
-/** The word as shown at the top of the card. */
-function prompt(card: CardRow, mode: Mode): string {
-  return mode === 'cyr-lat' ? card.sr_cyr : cyrToLat(card.sr_cyr);
 }
 
 /**
@@ -83,8 +94,11 @@ function answerRole(mode: Mode): ScriptRole {
   return mode === 'cyr-lat' ? 'lat' : 'cyr';
 }
 
-/** The script the prompt is in: the opposite of the answer's. */
-function promptRole(mode: Mode): ScriptRole {
+/**
+ * The script of the *other* spelling shown once a word is marked: the Cyrillic
+ * under a Latin answer, the Latin under a Cyrillic one.
+ */
+function otherRole(mode: Mode): ScriptRole {
   return mode === 'cyr-lat' ? 'cyr' : 'lat';
 }
 
@@ -92,10 +106,33 @@ export default function TrainerScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
-  const cards = useQuery({ queryKey: ['cards'], queryFn: () => api.listCards() });
-  const stats = useQuery({ queryKey: ['drill-stats'], queryFn: () => api.listDrillStats() });
+  const params = useLocalSearchParams<{ theme?: string }>();
+  const theme = parseTheme(params.theme);
+  const mine = theme === MINE_THEME;
 
-  const [mode, setMode] = useState<Mode>('cyr-lat');
+  // The deck for the whole deck or a domain; My words for `mine`, like the Read
+  // aloud run — those are the rows that say which words are known.
+  const cards = useQuery({
+    queryKey: ['cards'],
+    queryFn: () => api.listCards(),
+    enabled: !mine,
+  });
+  const library = useQuery({
+    queryKey: ['library'],
+    queryFn: () => api.getLibrary(),
+    enabled: mine,
+  });
+  const stats = useQuery({ queryKey: ['drill-stats'], queryFn: () => api.listDrillStats() });
+  const words = mine ? library : cards;
+
+  const pool = useMemo(
+    () => practisePool({ theme, cards: cards.data ?? [], library: library.data ?? [] }),
+    [cards.data, library.data, theme],
+  );
+
+  const [mode, setMode] = useState<Mode>('lat-cyr');
+  /** Whether the Latin spelling is showing under the English, for this word. */
+  const [hinted, setHinted] = useState(false);
   /** The round's words, fixed for its lifetime. Null means "build me one". */
   const [round, setRound] = useState<CardRow[] | null>(null);
   const [index, setIndex] = useState(0);
@@ -127,6 +164,7 @@ export default function TrainerScreen() {
     setIndex(0);
     setTyped('');
     setMarked(null);
+    setHinted(false);
     setResults([]);
     roundAwarded.current = false;
   }, []);
@@ -136,11 +174,11 @@ export default function TrainerScreen() {
   // biased by the wrong numbers.
   useEffect(() => {
     if (round !== null) return;
-    if (!cards.data || !stats.data) return;
-    if (cards.isFetching || stats.isFetching) return;
+    if (!words.data || !stats.data) return;
+    if (words.isFetching || stats.isFetching) return;
     masteredAtRoundStart.current = masteredLetters(stats.data);
-    setRound(pickDrillWords(cards.data, stats.data, ROUND_SIZE));
-  }, [cards.data, cards.isFetching, round, stats.data, stats.isFetching]);
+    setRound(pickDrillWords(pool, stats.data, ROUND_SIZE));
+  }, [pool, round, stats.data, stats.isFetching, words.data, words.isFetching]);
 
   const save = useMutation({
     mutationFn: (deltas: LetterDelta[]) => {
@@ -210,6 +248,7 @@ export default function TrainerScreen() {
 
   const next = useCallback(() => {
     setMarked(null);
+    setHinted(false);
     setTyped('');
     setIndex((current) => current + 1);
     inputRef.current?.focus();
@@ -236,9 +275,13 @@ export default function TrainerScreen() {
   );
 
   const goHome = useCallback(() => {
-    if (router.canGoBack()) router.back();
+    // Opened from Practise, so that is where it goes back to — popping to it
+    // when it is on the stack, landing on it after a deep link.
+    if (theme !== null) router.dismissTo('/practise');
+    else if (router.canGoBack()) router.back();
     else router.replace('/');
-  }, [router]);
+  }, [router, theme]);
+  const homeLabel = theme !== null ? 'Back to Practise' : 'Back to the dashboard';
 
   const roundDeltas = useMemo(() => tallyAttempts(results), [results]);
 
@@ -253,8 +296,8 @@ export default function TrainerScreen() {
 
   // Errors first: a failed query never produces data, so `round` would stay
   // null and a loading check ahead of this one would spin for ever.
-  if (cards.isError || stats.isError) {
-    const error = cards.error ?? stats.error;
+  if (words.isError || stats.isError) {
+    const error = words.error ?? stats.error;
     return (
       <View style={styles.centred}>
         <Text style={styles.error} testID="trainer-error">
@@ -263,7 +306,7 @@ export default function TrainerScreen() {
         <Pressable
           style={styles.textButton}
           onPress={() => {
-            void cards.refetch();
+            void words.refetch();
             void stats.refetch();
           }}
           accessibilityRole="button"
@@ -286,10 +329,19 @@ export default function TrainerScreen() {
     return (
       <View style={styles.centred}>
         <Text style={styles.error} testID="trainer-empty">
-          There are no single words in the deck to drill yet. Add a word and come back.
+          {theme === null
+            ? 'There are no single words in the deck to drill yet. Add a word and come back.'
+            : mine
+              ? 'Nothing here yet — tick words you know in My words, then come back.'
+              : `${setLabel(theme)} has no single words to type. Pick another set.`}
         </Text>
-        <Pressable style={styles.textButton} onPress={goHome} accessibilityRole="button">
-          <Text style={styles.textButtonLabel}>Back to the dashboard</Text>
+        <Pressable
+          style={styles.textButton}
+          onPress={goHome}
+          accessibilityRole="button"
+          testID="trainer-empty-back"
+        >
+          <Text style={styles.textButtonLabel}>{homeLabel}</Text>
         </Pressable>
       </View>
     );
@@ -361,6 +413,11 @@ export default function TrainerScreen() {
             {right} / {results.length}
           </Text>
           <Text style={styles.summarySubtitle}>words spelled exactly right</Text>
+          {theme !== null ? (
+            <Text style={styles.summarySet} testID="drill-set-name">
+              {setLabel(theme)}
+            </Text>
+          ) : null}
 
           {masteryBar}
 
@@ -389,7 +446,7 @@ export default function TrainerScreen() {
             accessibilityRole="button"
             testID="drill-done"
           >
-            <Text style={styles.textButtonLabel}>Back to the dashboard</Text>
+            <Text style={styles.textButtonLabel}>{homeLabel}</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -408,17 +465,47 @@ export default function TrainerScreen() {
 
         <Text style={styles.progress} testID="drill-progress">
           {index + 1} of {round.length}
+          {theme !== null ? ` · ${setLabel(theme)}` : ''}
         </Text>
 
         {banner}
 
         <View style={styles.card}>
-          <ScriptText role={promptRole(mode)} style={styles.promptWord} testID="drill-prompt">
-            {prompt(card, mode)}
-          </ScriptText>
-          <ScriptText role="en" style={styles.promptEn}>
-            {card.en}
-          </ScriptText>
+          {mode === 'cyr-lat' ? (
+            <>
+              <ScriptText role="cyr" style={styles.promptWord} testID="drill-prompt">
+                {card.sr_cyr}
+              </ScriptText>
+              <ScriptText role="en" style={styles.promptEn}>
+                {card.en}
+              </ScriptText>
+            </>
+          ) : (
+            <>
+              {/* The meaning is the question, so it is set as one: full
+                  text colour, not the muted grey English is elsewhere. */}
+              <Text style={styles.promptMeaning} testID="drill-prompt">
+                {card.en}
+              </Text>
+              {hinted || marked ? (
+                <ScriptText role="lat" style={styles.promptEn} testID="drill-hint-text">
+                  {cyrToLat(card.sr_cyr)}
+                </ScriptText>
+              ) : (
+                <Pressable
+                  style={styles.hintButton}
+                  onPress={() => {
+                    setHinted(true);
+                    inputRef.current?.focus();
+                  }}
+                  accessibilityRole="button"
+                  testID="drill-hint"
+                >
+                  <Text style={styles.hintButtonLabel}>Show the spelling in Latin</Text>
+                </Pressable>
+              )}
+            </>
+          )}
 
           <TextInput
             ref={inputRef}
@@ -470,9 +557,13 @@ export default function TrainerScreen() {
                 {marked.correct ? 'Correct' : 'Not quite'}
               </Text>
               <MarkedAnswer expected={expected} score={marked} role={answerRole(mode)} />
-              <ScriptText role={promptRole(mode)} style={styles.otherScript}>
-                {mode === 'cyr-lat' ? card.sr_cyr : cyrToLat(card.sr_cyr)}
-              </ScriptText>
+              {/* The Latin is already on the card once a Cyrillic answer is
+                  marked; the Cyrillic under a Latin answer is not. */}
+              {mode === 'cyr-lat' ? (
+                <ScriptText role={otherRole(mode)} style={styles.otherScript}>
+                  {card.sr_cyr}
+                </ScriptText>
+              ) : null}
             </View>
           ) : null}
         </View>
@@ -667,6 +758,14 @@ const styles = StyleSheet.create({
   // Colour and face come from `script`; only size, weight and layout live here.
   promptWord: { fontSize: 40, fontWeight: '700', textAlign: 'center' },
   promptEn: { fontSize: 15, marginBottom: spacing.sm },
+  promptMeaning: { fontSize: 30, fontWeight: '700', color: colors.text, textAlign: 'center' },
+  hintButton: {
+    minHeight: touchTarget - 12,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  hintButtonLabel: { color: colors.primary, fontSize: 14, fontWeight: '600' },
   input: {
     alignSelf: 'stretch',
     minHeight: touchTarget,
@@ -728,6 +827,7 @@ const styles = StyleSheet.create({
   summaryTitle: { fontSize: 32, fontWeight: '700', color: colors.text, textAlign: 'center' },
   summaryScore: { fontSize: 48, fontWeight: '700', color: colors.primary, textAlign: 'center' },
   summarySubtitle: { fontSize: 15, color: colors.textMuted, textAlign: 'center', marginTop: -spacing.sm },
+  summarySet: { fontSize: 15, fontWeight: '600', color: colors.text, textAlign: 'center' },
   weakCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,

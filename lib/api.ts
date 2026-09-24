@@ -29,6 +29,7 @@ import {
   markKnownParams,
   type LibraryEntry,
 } from "@/lib/library";
+import { inQueueScope, queueScope } from "@/lib/practise";
 import { buildQueue } from "@/lib/queue";
 import {
   QUICK_ADD_FN,
@@ -434,6 +435,8 @@ function embeddedCard(row: DueJoinRow): CardRow | null {
 async function fetchNewCards(
   userId: string,
   allowance: number,
+  /** Only cards in this `cards.domain` — a Practise set. Null for the deck. */
+  domain: string | null = null,
 ): Promise<CardRow[]> {
   if (allowance <= 0) return [];
 
@@ -446,12 +449,18 @@ async function fetchNewCards(
     (studied.data ?? []).map((row) => row.card_id as string),
   );
 
-  const candidates = await supabase
+  let candidateQuery = supabase
     .from("cards")
     .select("*")
     // The deck filter. Without it the letters would queue themselves as word
     // cards, which is exactly the arrangement this app has just left behind.
-    .eq("kind", WORD_KIND)
+    .eq("kind", WORD_KIND);
+  // A themed session introduces that theme's words and no others. The limit
+  // below stays an upper bound: at most `seen.size` of these can be ones
+  // already studied, whatever domain those were in.
+  if (domain !== null) candidateQuery = candidateQuery.eq("domain", domain);
+
+  const candidates = await candidateQuery
     // Words the user added come first (`created_by` is null for seed rows):
     // someone who has just typed in a word wants it in today's session, not in
     // two months' time once the seed deck has been worked through.
@@ -477,26 +486,41 @@ async function fetchNewCards(
  * New cards deliberately arrive with `userCard: null` — no row is written until
  * the card is actually graded, so an introduced-but-unanswered card stays out of
  * both the due count and the daily allowance.
+ *
+ * `theme` is a Practise set (`lib/practise.ts`): a domain keeps both the due and
+ * the new cards to that domain, `mine` keeps the session to known words that
+ * are due. The day's new-card budget is still the whole day's — `newDoneToday`
+ * is counted across every set — so choosing a theme is a way of picking which
+ * new words arrive, never a way of getting more of them. No theme is the daily
+ * session, exactly as before.
  */
-async function getQueue(now: Date = new Date()): Promise<QueueEntry[]> {
+async function getQueue(
+  now: Date = new Date(),
+  theme: string | null = null,
+): Promise<QueueEntry[]> {
   const userId = await requireUserId();
   const kind = WORD_KIND;
+  const scope = queueScope(theme);
+
+  let dueQuery = supabase
+    .from("user_cards")
+    // `!inner` rather than a plain embed so the deck filter below can apply to
+    // the joined card. The FK is `not null`, so the join drops nothing.
+    .select("*, cards!inner(*)")
+    .eq("user_id", userId)
+    .eq("cards.kind", kind)
+    // Matches the dashboard's `dueCount`. Under lazy insertion a `new` row
+    // cannot exist, but if one ever did, counting it here and not there would
+    // make "Due 0" open a session with cards in it.
+    .neq("state", "new")
+    .lte("due", now.toISOString());
+  if (scope.domain !== null) dueQuery = dueQuery.eq("cards.domain", scope.domain);
+  if (scope.knownOnly) dueQuery = dueQuery.eq("state", "review");
 
   const [settings, newDoneToday, dueResult] = await Promise.all([
     getSettings(),
     countNewDoneToday(userId, now),
-    supabase
-      .from("user_cards")
-      // `!inner` rather than a plain embed so the deck filter below can apply to
-      // the joined card. The FK is `not null`, so the join drops nothing.
-      .select("*, cards!inner(*)")
-      .eq("user_id", userId)
-      .eq("cards.kind", kind)
-      // Matches the dashboard's `dueCount`. Under lazy insertion a `new` row
-      // cannot exist, but if one ever did, counting it here and not there would
-      // make "Due 0" open a session with cards in it.
-      .neq("state", "new")
-      .lte("due", now.toISOString())
+    dueQuery
       .order("due", { ascending: true })
       .limit(MAX_ROWS)
       .returns<DueJoinRow[]>(),
@@ -517,13 +541,23 @@ async function getQueue(now: Date = new Date()): Promise<QueueEntry[]> {
     // letters are not reviewed here at all any more.
     if (card.kind !== kind) continue;
     const { cards: _embedded, ...userCard } = row;
+    // The same belt for the set: the filters above already asked for this.
+    if (!inQueueScope(scope, card, userCard)) continue;
     dueCards.push(userCard);
     byId.set(card.id, { cardId: card.id, isNew: false, card, userCard });
   }
 
-  const newCards = (
-    await fetchNewCards(userId, Math.max(0, newPerDay - newDoneToday))
-  ).filter((card) => card.kind === kind);
+  const newCards = scope.includeNew
+    ? (
+        await fetchNewCards(
+          userId,
+          Math.max(0, newPerDay - newDoneToday),
+          scope.domain,
+        )
+      ).filter(
+        (card) => card.kind === kind && inQueueScope(scope, card, null),
+      )
+    : [];
   for (const card of newCards) {
     byId.set(card.id, { cardId: card.id, isNew: true, card, userCard: null });
   }
