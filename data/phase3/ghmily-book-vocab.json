@@ -1,0 +1,672 @@
+[
+  {
+    "sr_cyr": "ја",
+    "en": "I",
+    "pos": "pronoun",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Ја сам тата.",
+    "example_en": "I am Dad.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "ти",
+    "en": "you (one person, informal)",
+    "pos": "pronoun",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Ти си мој мали зец.",
+    "example_en": "You are my little hare.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "он",
+    "en": "he",
+    "pos": "pronoun",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Он већ спава.",
+    "example_en": "He is already asleep.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "твој",
+    "en": "your (one person, informal)",
+    "pos": "pronoun",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Ово је твој кревет.",
+    "example_en": "This is your bed.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "то",
+    "en": "that; it",
+    "pos": "pronoun",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "То је много!",
+    "example_en": "That is a lot!",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "који",
+    "en": "who; which",
+    "pos": "pronoun",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Зец који спава је мали.",
+    "example_en": "The hare who is sleeping is little.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "ништа",
+    "en": "nothing",
+    "pos": "pronoun",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Ништа не видим.",
+    "example_en": "I can’t see anything.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "све",
+    "en": "everything; all the way",
+    "pos": "pronoun",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Волим те све до неба.",
+    "example_en": "I love you all the way to the sky.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "и",
+    "en": "and",
+    "pos": "conjunction",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Мама и тата.",
+    "example_en": "Mum and Dad.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "а",
+    "en": "and; but (contrast)",
+    "pos": "conjunction",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Ја сам велики, а ти си мали.",
+    "example_en": "I’m big, and you’re little.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "али",
+    "en": "but",
+    "pos": "conjunction",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Мали је, али брз.",
+    "example_en": "He’s little, but quick.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "у",
+    "en": "in; into",
+    "pos": "preposition",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Зец је у кревету.",
+    "example_en": "The hare is in bed.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "на",
+    "en": "on; onto",
+    "pos": "preposition",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Књига је на столу.",
+    "example_en": "The book is on the table.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "за",
+    "en": "for; by (holding by)",
+    "pos": "preposition",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Ово је за тебе.",
+    "example_en": "This is for you.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "до",
+    "en": "to; as far as",
+    "pos": "preposition",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Волим те до реке.",
+    "example_en": "I love you as far as the river.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "од",
+    "en": "from; than; made of",
+    "pos": "preposition",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Кревет од лишћа.",
+    "example_en": "A bed of leaves.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "с",
+    "en": "with",
+    "pos": "preposition",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Шетам с тобом.",
+    "example_en": "I’m walking with you.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "иза",
+    "en": "behind",
+    "pos": "preposition",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Зец је иза дрвета.",
+    "example_en": "The hare is behind the tree.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "крај",
+    "en": "beside; next to",
+    "pos": "preposition",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Легао је крај њега.",
+    "example_en": "He lay down beside him.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "низ",
+    "en": "down (along)",
+    "pos": "preposition",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Трчи низ брдо.",
+    "example_en": "He runs down the hill.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "још",
+    "en": "still; even; more",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Још једном!",
+    "example_en": "One more time!",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "много",
+    "en": "a lot; much",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Волим те много.",
+    "example_en": "I love you a lot.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "веома",
+    "en": "very",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "То је веома далеко.",
+    "example_en": "That is very far.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "баш",
+    "en": "really; just",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "То је баш добро.",
+    "example_en": "That’s really good.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "онда",
+    "en": "then",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Онда идемо на спавање.",
+    "example_en": "Then we go to bed.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "затим",
+    "en": "then; after that",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Затим је затворио очи.",
+    "example_en": "Then he closed his eyes.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "онолико",
+    "en": "as much as that",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Волим те онолико колико могу.",
+    "example_en": "I love you as much as I can.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "докле",
+    "en": "how far; as far as",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Докле можеш да скочиш?",
+    "example_en": "How far can you jump?",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "прилично",
+    "en": "quite; fairly",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "То је прилично високо.",
+    "example_en": "That is quite high.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "готово",
+    "en": "almost",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Готово је заспао.",
+    "example_en": "He has almost fallen asleep.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "превише",
+    "en": "too; too much",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Превише сам поспан.",
+    "example_en": "I’m too sleepy.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "даље",
+    "en": "further; any more",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Не могу даље.",
+    "example_en": "I can’t go any further.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "скроз",
+    "en": "all the way; completely",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Скроз до реке.",
+    "example_en": "All the way to the river.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "наопачке",
+    "en": "upside down",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Зец је наопачке!",
+    "example_en": "The hare is upside down!",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "чврсто",
+    "en": "tightly",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Држи се чврсто.",
+    "example_en": "Hold on tight.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "горе-доле",
+    "en": "up and down",
+    "pos": "adverb",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Скаче горе-доле.",
+    "example_en": "He jumps up and down.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "ох",
+    "en": "oh",
+    "pos": "interjection",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Ох, то је далеко.",
+    "example_en": "Oh, that’s far.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "спавање",
+    "en": "sleep; going to bed",
+    "pos": "noun",
+    "gender": "n",
+    "aspect": null,
+    "example_cyr": "Време је за спавање.",
+    "example_en": "It’s time for bed.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "идеја",
+    "en": "idea",
+    "pos": "noun",
+    "gender": "f",
+    "aspect": null,
+    "example_cyr": "Имам добру идеју!",
+    "example_en": "I have a good idea!",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "стабло",
+    "en": "tree trunk; tree",
+    "pos": "noun",
+    "gender": "n",
+    "aspect": null,
+    "example_cyr": "Стабло је велико.",
+    "example_en": "The tree trunk is big.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "ваздух",
+    "en": "air",
+    "pos": "noun",
+    "gender": "m",
+    "aspect": null,
+    "example_cyr": "Подигао га је у ваздух.",
+    "example_en": "He lifted him into the air.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "скок",
+    "en": "jump",
+    "pos": "noun",
+    "gender": "m",
+    "aspect": null,
+    "example_cyr": "То је баш добар скок!",
+    "example_en": "That’s a really good jump!",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "улица",
+    "en": "street; lane",
+    "pos": "noun",
+    "gender": "f",
+    "aspect": null,
+    "example_cyr": "Ово је наша улица.",
+    "example_en": "This is our street.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "жбуње",
+    "en": "bushes",
+    "pos": "noun",
+    "gender": "n",
+    "aspect": null,
+    "example_cyr": "Зец је у жбуњу.",
+    "example_en": "The hare is in the bushes.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "лишће",
+    "en": "leaves",
+    "pos": "noun",
+    "gender": "n",
+    "aspect": null,
+    "example_cyr": "Лишће је жуто.",
+    "example_en": "The leaves are yellow.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "дугачак",
+    "en": "long",
+    "pos": "adjective",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Зец има дугачке уши.",
+    "example_en": "The hare has long ears.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "сигуран",
+    "en": "sure",
+    "pos": "adjective",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Ниси сигуран?",
+    "example_en": "Aren’t you sure?",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "поспан",
+    "en": "sleepy",
+    "pos": "adjective",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Мали је поспан.",
+    "example_en": "The little one is sleepy.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "мрачан",
+    "en": "dark",
+    "pos": "adjective",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Ноћ је мрачна.",
+    "example_en": "The night is dark.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "толики",
+    "en": "that big; so big",
+    "pos": "adjective",
+    "gender": null,
+    "aspect": null,
+    "example_cyr": "Има толике руке!",
+    "example_en": "He has such big arms!",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "спремати се",
+    "en": "to get ready",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "impf",
+    "example_cyr": "Спремамо се за спавање.",
+    "example_en": "We’re getting ready for bed.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "одговорити",
+    "en": "to answer",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Одговорио је тата.",
+    "example_en": "Dad answered.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "помислити",
+    "en": "to think (for a moment)",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "То је много, помисли зец.",
+    "example_en": "That’s a lot, thought the hare.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "дохватити",
+    "en": "to reach",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Не могу да дохватим.",
+    "example_en": "I can’t reach.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "преврнути се",
+    "en": "to turn over; to flip over",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Преврнуо се наопачке.",
+    "example_en": "He flipped upside down.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "прислонити се",
+    "en": "to lean (against)",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Прислонио се на дрво.",
+    "example_en": "He leaned against the tree.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "поскакивати",
+    "en": "to hop about",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "impf",
+    "example_cyr": "Зец поскакује у трави.",
+    "example_en": "The hare is hopping about in the grass.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "осмехнути се",
+    "en": "to smile",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Осмехни се!",
+    "example_en": "Give us a smile!",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "додирнути",
+    "en": "to touch",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Додирни нос!",
+    "example_en": "Touch your nose!",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "повикати",
+    "en": "to shout",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Повикао је: Тата!",
+    "example_en": "He shouted: Dad!",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "размишљати",
+    "en": "to think (about); to ponder",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "impf",
+    "example_cyr": "Мало размишљам.",
+    "example_en": "I’m having a little think.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "погледати",
+    "en": "to look",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Погледај Месец!",
+    "example_en": "Look at the moon!",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "сместити",
+    "en": "to settle; to tuck (into)",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Сместио га је у кревет.",
+    "example_en": "He tucked him into bed.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "нагнути се",
+    "en": "to lean over",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Нагнуо се над кревет.",
+    "example_en": "He leaned over the bed.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "пољубити",
+    "en": "to kiss",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Пољуби маму за лаку ноћ.",
+    "example_en": "Kiss Mum goodnight.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "лећи",
+    "en": "to lie down",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Хајде да легнемо.",
+    "example_en": "Let’s lie down.",
+    "domain": "ghmily"
+  },
+  {
+    "sr_cyr": "шапнути",
+    "en": "to whisper (once)",
+    "pos": "verb",
+    "gender": null,
+    "aspect": "pf",
+    "example_cyr": "Шапнуо је: Волим те.",
+    "example_en": "He whispered: I love you.",
+    "domain": "ghmily"
+  }
+]

@@ -2,11 +2,13 @@
 /**
  * Seed `public.cards` — the word deck — from the JSON files that hold it.
  *
- * Two sources, one table:
+ * Four sources, one table:
  *   data/phase3/ghmily-vocab.json  43 cards for the first book Mark reads with
  *                                  his son, so tapping a word in "Погоди
  *                                  колико те волим" finds a gloss the app owns
  *                                  rather than one it has to ask a model for.
+ *   data/phase3/ghmily-book-vocab.json  67 more: the rest of the words in
+ *                                  his own photographed copy of the book
  *   data/seed-deck.json          the 681-card starter deck
  *   data/phase3/themes.json      clothes, body, animals, talking to a toddler,
  *                                and toddler food — added 2026-09-18, queued
@@ -57,6 +59,7 @@ const repoRoot = path.join(scriptDir, '..');
 /** The card files, in the order they should reach the new-card queue. */
 const SOURCES = [
   { label: 'GHMILY vocabulary', file: path.join(repoRoot, 'data', 'phase3', 'ghmily-vocab.json') },
+  { label: 'GHMILY book words', file: path.join(repoRoot, 'data', 'phase3', 'ghmily-book-vocab.json') },
   { label: 'starter deck', file: path.join(repoRoot, 'data', 'seed-deck.json') },
   { label: 'themes', file: path.join(repoRoot, 'data', 'phase3', 'themes.json') },
 ];
