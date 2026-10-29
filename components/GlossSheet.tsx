@@ -5,7 +5,15 @@
  * from is the context that makes the answer make sense, so it must stay on
  * screen behind the sheet.
  *
- * A tap is answered in two tiers (spec §6, which every reading view follows):
+ * A photographed book page can carry its own answer first: a `gloss` written
+ * offline by Claude with the sentence in view. When the caller passes one it
+ * *is* the answer, ahead of the deck — the deck only knows exact spellings, so
+ * it would miss "смеђег" altogether and answer "му" (to him) with "moo". The
+ * gloss can name the deck card the word comes from, and that card's English and
+ * audio are shown underneath. There is nothing to request in that case.
+ *
+ * Otherwise a tap is answered in two tiers (spec §6, which every reading view
+ * follows):
  *   1. the deck already has that exact word → show the card, with its recorded
  *      clip if it has one. No `user_cards` row is written: a card with no row
  *      *is* a new card and joins the next session's allowance on its own (the
@@ -24,14 +32,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { ScriptText } from '@/components/ScriptText';
+import { MixedText, ScriptText } from '@/components/ScriptText';
 import { SpeakButton } from '@/components/SpeakButton';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { readerRequestText } from '@/lib/requests';
 import { colors, radius, spacing, touchTarget } from '@/lib/theme';
 import { cyrToLat } from '@/lib/transliterate';
-import type { CardRow } from '@/lib/types';
+import type { BookGloss, CardRow } from '@/lib/types';
 
 /**
  * What the sheet found for the tapped word: the deck's card, or nothing — in
@@ -39,15 +47,41 @@ import type { CardRow } from '@/lib/types';
  */
 type Lookup = { kind: 'card'; card: CardRow } | { kind: 'unknown' };
 
+/**
+ * The deck lookup for one word, cached per word so tapping back and forth
+ * between two words does not re-query either of them. Keyed on the word alone
+ * (not the sentence): the deck knows nothing about context, and keying on both
+ * would re-fetch the same card for every sentence it appears in.
+ *
+ * One definition for both uses — the tapped word itself, and the card a gloss
+ * points at — so the two share a cache entry and its shape by construction.
+ */
+function wordLookup(word: string) {
+  return {
+    queryKey: ['word-lookup', word.toLowerCase()],
+    staleTime: Infinity,
+    queryFn: async (): Promise<Lookup> => {
+      const card = await api.findCardByWord(word);
+      return card ? { kind: 'card', card } : { kind: 'unknown' };
+    },
+  };
+}
+
 export function GlossSheet({
   word,
   sentence,
+  gloss = null,
   requested = false,
   onRequested,
   onClose,
 }: {
   /** The tapped word, exactly as it appears in the text. */
   word: string;
+  /**
+   * What the word means on this page, when the page has been glossed. Takes
+   * priority over the deck lookup, which is then not made at all.
+   */
+  gloss?: BookGloss | null;
   /** The sentence it was read in — the context a request is filed with. */
   sentence: string;
   /**
@@ -63,20 +97,9 @@ export function GlossSheet({
 }) {
   const queryClient = useQueryClient();
 
-  /**
-   * The deck lookup, cached per word so tapping back and forth between two
-   * words does not re-query either of them. Keyed on the word alone (not the
-   * sentence): the deck knows nothing about context, and keying on both would
-   * re-fetch the same card for every sentence it appears in.
-   */
-  const lookup = useQuery({
-    queryKey: ['word-lookup', word.toLowerCase()],
-    staleTime: Infinity,
-    queryFn: async (): Promise<Lookup> => {
-      const card = await api.findCardByWord(word);
-      return card ? { kind: 'card', card } : { kind: 'unknown' };
-    },
-  });
+  // Skipped when there is a gloss: the exact-spelling match is the very thing
+  // the gloss overrides, so fetching it would only cost a round trip.
+  const lookup = useQuery({ ...wordLookup(word), enabled: !gloss });
 
   // Playback is a user setting, and this is the same card the review screen
   // would show. `['settings']` is shared, so it is normally already warm.
@@ -113,7 +136,15 @@ export function GlossSheet({
         </Pressable>
       </View>
 
-      {lookup.isPending ? (
+      {/* The gloss is checked first: with it, the deck lookup is disabled and
+          so reports itself pending for good. */}
+      {gloss ? (
+        <GlossedWord
+          latin={cyrToLat(word)}
+          gloss={gloss}
+          ttsEnabled={settings.data?.tts_enabled ?? true}
+        />
+      ) : lookup.isPending ? (
         <ActivityIndicator color={colors.primary} testID="sheet-loading" />
       ) : lookup.isError ? (
         <View style={styles.sheetBody}>
@@ -140,6 +171,47 @@ export function GlossSheet({
           error={request.isError ? errorMessage(request.error, 'That could not be filed.') : null}
           onRequest={() => request.mutate()}
         />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * A tapped word the page has a gloss for: how it sounds, what it means here,
+ * and — when the gloss names one — the deck card it comes from, with its audio.
+ *
+ * The card line is a garnish. While it loads, or if the card has gone from the
+ * deck, or the lookup fails, it is simply left out: the gloss has already
+ * answered the question.
+ */
+function GlossedWord({
+  latin,
+  gloss,
+  ttsEnabled,
+}: {
+  latin: string;
+  gloss: BookGloss;
+  ttsEnabled: boolean;
+}) {
+  const base = gloss.base ?? '';
+  const baseLookup = useQuery({ ...wordLookup(base), enabled: base !== '' });
+  const baseCard = baseLookup.data?.kind === 'card' ? baseLookup.data.card : null;
+
+  return (
+    <View style={styles.sheetBody} testID="sheet-gloss">
+      <ScriptText role="lat" style={styles.glossLatin} testID="sheet-transliteration">
+        {latin}
+      </ScriptText>
+      <ScriptText role="en" style={styles.wordEn} testID="sheet-gloss-en">
+        {gloss.en}
+      </ScriptText>
+      {baseCard ? (
+        <View style={styles.sheetFooter} testID="sheet-gloss-base">
+          <MixedText style={styles.muted}>
+            {`From the word ${baseCard.sr_cyr} — ${baseCard.en}`}
+          </MixedText>
+          <SpeakButton path={baseCard.audio_path} enabled={ttsEnabled} testID="sheet-speak" />
+        </View>
       ) : null}
     </View>
   );
@@ -302,6 +374,9 @@ const styles = StyleSheet.create({
   wordExample: { fontSize: 16 },
   wordExampleEn: { fontSize: 14 },
   wordLatin: { fontSize: 24, fontWeight: '600' },
+  // Smaller than an unknown word's, where the Latin is the whole answer; here
+  // the English beneath it is.
+  glossLatin: { fontSize: 18, fontWeight: '600' },
   // Serbian, so it is set as Serbian; the italic and the small size are what
   // keep it reading as the context rather than the answer.
   wordSentence: { fontSize: 14, fontStyle: 'italic' },

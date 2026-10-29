@@ -26,7 +26,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { GlossSheet } from '@/components/GlossSheet';
 import { MixedText, ScriptText } from '@/components/ScriptText';
 import { api } from '@/lib/api';
-import { describeBookFinishError, PENDING_NOTE } from '@/lib/books';
+import { describeBookFinishError, glossFor, PENDING_NOTE } from '@/lib/books';
 import { errorMessage } from '@/lib/errors';
 import { sentenceAt, tokenize } from '@/lib/reader';
 import { colors, contentMaxWidth, radius, spacing, touchTarget } from '@/lib/theme';
@@ -279,6 +279,9 @@ export default function BookScreen() {
           key={`${currentIndex}-${selectedIndex}`}
           word={selected.word}
           sentence={selected.sentence}
+          // A photographed page's own answer for this word, when it has one;
+          // it outranks the deck's exact-spelling match.
+          gloss={glossFor(page?.glosses, selected.word)}
           requested={requested.has(selected.word.toLowerCase())}
           onRequested={(word) =>
             setRequested((previous) => new Set(previous).add(word.toLowerCase()))

@@ -90,7 +90,11 @@ The alphabet, Requests, Progress). Every route below still exists.
   book is either a Claude-authored Serbian rendering (the first one is _Погоди
   колико те волим_, 16 pages) or one built from **photographs** of the physical
   book on the shelf, saved immediately and transcribed offline. Reading is one
-  page at a time, big Cyrillic, every word tappable.
+  page at a time, big Cyrillic, every word tappable. A photographed page also
+  carries its own word meanings (`book_pages.glosses`), written offline by
+  Claude alongside the transcription, so a tap says what the word means in that
+  sentence — and which deck word it comes from — rather than relying on an
+  exact match in the deck.
 - **Deck** — browse and search every card (Cyrillic, Latin or English), edit or
   delete one, and add a word by hand.
 - **My words** — the other half of that question: not what is in the app, but

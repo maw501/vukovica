@@ -5,11 +5,12 @@
  *
  * Free of Supabase and React Native imports on purpose — exactly as
  * `lib/reader.ts` is — so every boundary here is unit-testable without a
- * database, a browser, or a phone. `lib/errors.ts` is the only import, and it
- * imports nothing itself.
+ * database, a browser, or a phone. `lib/errors.ts` is the only runtime import,
+ * and it imports nothing itself; `lib/types.ts` is imported for types alone.
  */
 
 import { errorMessage } from '@/lib/errors';
+import type { BookGloss } from '@/lib/types';
 
 /**
  * Where a photographed page lives in the private `book-photos` bucket.
@@ -178,4 +179,30 @@ export function base64ToBytes(base64: string): Uint8Array {
  */
 export function photoContentType(mimeType: string | null | undefined): string {
   return mimeType && mimeType.startsWith('image/') ? mimeType : 'image/jpeg';
+}
+
+/**
+ * The gloss for a tapped word on a photographed page, or null when the page
+ * has none for it.
+ *
+ * Keys are the word lowercased, as the tokenizer yields it, so the lookup
+ * lowercases too. The column is hand-written jsonb, so anything malformed — a
+ * non-object, an entry with no usable `en` — reads as "no gloss" and the sheet
+ * falls back to the deck lookup rather than showing a blank. A `base` that is
+ * not a non-empty string is dropped rather than trusted.
+ */
+export function glossFor(glosses: unknown, word: string): BookGloss | null {
+  if (glosses === null || typeof glosses !== 'object' || Array.isArray(glosses)) return null;
+  const key = word.trim().toLowerCase();
+  // Own properties only, so "constructor" or "toString" is never a gloss.
+  if (!key || !Object.prototype.hasOwnProperty.call(glosses, key)) return null;
+
+  const entry: unknown = (glosses as Record<string, unknown>)[key];
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return null;
+
+  const { en, base } = entry as { en?: unknown; base?: unknown };
+  if (typeof en !== 'string' || !en.trim()) return null;
+
+  const trimmedBase = typeof base === 'string' ? base.trim() : '';
+  return trimmedBase ? { en: en.trim(), base: trimmedBase } : { en: en.trim() };
 }
