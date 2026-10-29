@@ -314,8 +314,9 @@ npm run db:migrate        # apply migrations (supabase db push --local)
 npm run db:seed           # load the word decks into public.cards (724 rows)
 ```
 
-`db:seed` loads both card files — `data/phase3/ghmily-vocab.json` (43, the first
-book's words) and `data/seed-deck.json` (681) — in that order, which is the
+`db:seed` loads the card files — `data/phase3/ghmily-vocab.json` (43, the first
+book's words), `data/phase3/ghmily-book-vocab.json` (67 more, the rest of the
+words in Mark's photographed copy), `data/seed-deck.json` (681) and the themes — in that order, which is the
 order they reach the new-card queue. The book's vocabulary goes first
 deliberately: reading _Погоди колико те волим_ with his son is the stated first
 goal, and 43 cards is about a fortnight. It is idempotent: it upserts on the
