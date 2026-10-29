@@ -5,6 +5,7 @@ import {
   bookTitleError,
   cyrillicTitleError,
   describeBookFinishError,
+  glossFor,
   MAX_PAGES,
   pageCountError,
   photoContentType,
@@ -179,5 +180,60 @@ describe('describeBookFinishError', () => {
 
   it('falls back to something actionable', () => {
     expect(describeBookFinishError(null)).toBe('That could not be saved. Try again.');
+  });
+});
+
+describe('glossFor', () => {
+  const glosses = {
+    му: { en: 'to him' },
+    смеђег: { en: ' brown ', base: ' смеђ ' },
+    'горе-доле': { en: 'up and down' },
+    празно: { en: '   ' },
+    без: { base: 'без' },
+    број: 7,
+    низ: ['x'],
+    ништа: null,
+    лош: { en: 'bad', base: 42 },
+    празан: { en: 'empty', base: '' },
+  };
+
+  it('finds a gloss by the lowercased word', () => {
+    expect(glossFor(glosses, 'Му')).toEqual({ en: 'to him' });
+    expect(glossFor(glosses, 'СМЕЂЕГ')).toEqual({ en: 'brown', base: 'смеђ' });
+  });
+
+  it('keeps hyphenated forms whole', () => {
+    expect(glossFor(glosses, 'Горе-доле')).toEqual({ en: 'up and down' });
+    expect(glossFor(glosses, 'горе')).toBeNull();
+  });
+
+  it('returns null for a word the page has no gloss for', () => {
+    expect(glossFor(glosses, 'зец')).toBeNull();
+    expect(glossFor(glosses, '')).toBeNull();
+  });
+
+  it('never treats an inherited property as a gloss', () => {
+    expect(glossFor(glosses, 'constructor')).toBeNull();
+    expect(glossFor(glosses, 'toString')).toBeNull();
+  });
+
+  it('tolerates a null or non-object column', () => {
+    expect(glossFor(null, 'му')).toBeNull();
+    expect(glossFor(undefined, 'му')).toBeNull();
+    expect(glossFor('му', 'му')).toBeNull();
+    expect(glossFor(['му'], 'му')).toBeNull();
+  });
+
+  it('treats a malformed entry as no gloss', () => {
+    expect(glossFor(glosses, 'празно')).toBeNull();
+    expect(glossFor(glosses, 'без')).toBeNull();
+    expect(glossFor(glosses, 'број')).toBeNull();
+    expect(glossFor(glosses, 'низ')).toBeNull();
+    expect(glossFor(glosses, 'ништа')).toBeNull();
+  });
+
+  it('drops a base that is not a non-empty string', () => {
+    expect(glossFor(glosses, 'лош')).toEqual({ en: 'bad' });
+    expect(glossFor(glosses, 'празан')).toEqual({ en: 'empty' });
   });
 });

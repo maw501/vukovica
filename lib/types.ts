@@ -222,7 +222,25 @@ export interface BookPageRow {
   text_cyr: string | null;
   /** A path in the private `book-photos` bucket; null for a Claude rendering. */
   photo_path: string | null;
+  /**
+   * What each word on this page means here, written offline by Claude. Keyed
+   * by the tapped word lowercased (hyphenated forms whole). null = not glossed,
+   * and the sheet falls back to the deck lookup. Free-form jsonb, so read it
+   * through `glossFor` (lib/books.ts), which tolerates anything malformed.
+   */
+  glosses: Record<string, BookGloss> | null;
   created_at: string | null;
+}
+
+/**
+ * One word's meaning on one photographed page — an entry of
+ * `book_pages.glosses`.
+ */
+export interface BookGloss {
+  /** What the word means in this sentence, in plain English ("to him", "I love"). */
+  en: string;
+  /** The `sr_cyr` of the deck card the word comes from; absent when there is none. */
+  base?: string;
 }
 
 /**
